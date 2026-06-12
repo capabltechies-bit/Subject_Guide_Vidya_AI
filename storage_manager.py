@@ -40,14 +40,18 @@ if IS_SUPABASE_CONFIGURED:
         IS_SUPABASE_CONFIGURED = False
 
 def is_supabase_active() -> bool:
+    """Auto-detect the best storage mode. Uses Supabase if configured and client is ready."""
     if not supabase_client:
         return False
+    if not IS_SUPABASE_CONFIGURED:
+        return False
+    # If session state has an explicit override, respect it
     try:
         if "use_supabase" in st.session_state:
             return bool(st.session_state["use_supabase"])
     except Exception:
         pass
-    # Default to True for cloud deployment if credentials exist and no choice is set
+    # Default: use Supabase if credentials exist and client initialized
     return True
 
 def __getattr__(name: str):
@@ -122,9 +126,9 @@ def send_local_verification_email(email_to: str, code: str) -> bool:
         msg = MIMEMultipart()
         msg['From'] = smtp_from
         msg['To'] = email_to
-        msg['Subject'] = "Vidya AI - Email Verification Code"
+        msg['Subject'] = "Scholar AI - Email Verification Code"
         
-        body = f"""Welcome to Vidya AI!
+        body = f"""Welcome to Scholar AI!
         
 Your email verification code is: {code}
         
@@ -148,40 +152,36 @@ Please enter this code in the application to complete your registration.
 # ══════════════════════════════════════════════════════════════════════════════
 def sign_in(email: str, password: str) -> tuple[bool, str, str]:
     """
+    Sign in using local auth (JSON users file).
+    Always uses local auth (Supabase is only for data storage).
     Returns (success, user_id_or_email, error_message)
     """
     email = email.lower().strip()
-    if IS_SUPABASE_ACTIVE:
-        try:
-            res = supabase_client.auth.sign_in_with_password({"email": email, "password": password})
-            return True, res.user.id, ""
-        except Exception as e:
-            return False, "", str(e)
+    # Always use local auth
+    if not os.path.exists(LOCAL_USERS_FILE):
+        return False, "", "Invalid email or password."
+    try:
+        with open(LOCAL_USERS_FILE, "r") as f:
+            users = json.load(f)
+    except Exception:
+        return False, "", "Database read error."
+        
+    if email not in users:
+        return False, "", "Invalid email or password."
+        
+    user_record = users[email]
+    if not user_record.get("is_verified", False):
+        return False, "", "Email is not verified. Please register again."
+        
+    if verify_password(password, user_record["password_hash"], user_record["salt"]):
+        return True, email, ""
     else:
-        # Local Mode
-        if not os.path.exists(LOCAL_USERS_FILE):
-            return False, "", "Invalid email or password."
-        try:
-            with open(LOCAL_USERS_FILE, "r") as f:
-                users = json.load(f)
-        except Exception:
-            return False, "", "Database read error."
-            
-        if email not in users:
-            return False, "", "Invalid email or password."
-            
-        user_record = users[email]
-        if not user_record.get("is_verified", False):
-            return False, "", "Email is not verified. Please register again."
-            
-        if verify_password(password, user_record["password_hash"], user_record["salt"]):
-            return True, email, ""
-        else:
-            return False, "", "Invalid email or password."
+        return False, "", "Invalid email or password."
 
 def start_sign_up(email: str, password: str) -> tuple[bool, str]:
     """
-    Step 1 of sign up. Triggers verification email.
+    Step 1 of sign up. Generates OTP and sends via SMTP.
+    Always uses local auth + SMTP (Supabase is only for data storage).
     Returns (success, error_message_or_success_message)
     """
     email = email.lower().strip()
@@ -190,144 +190,122 @@ def start_sign_up(email: str, password: str) -> tuple[bool, str]:
     if len(password) < 6:
         return False, "Password must be at least 6 characters long."
 
-    if IS_SUPABASE_ACTIVE:
+    # Always use local auth with SMTP OTP
+    os.makedirs("data", exist_ok=True)
+    users = {}
+    if os.path.exists(LOCAL_USERS_FILE):
         try:
-            # Supabase handles sign up and emails
-            res = supabase_client.auth.sign_up({"email": email, "password": password})
-            # If user is already created but not confirmed, it might succeed or error.
-            return True, "Check your email for the verification link/code."
-        except Exception as e:
-            return False, str(e)
+            with open(LOCAL_USERS_FILE, "r") as f:
+                users = json.load(f)
+        except Exception:
+            pass
+            
+    if email in users and users[email].get("is_verified", False):
+        return False, "User already exists with this email."
+        
+    # Generate 6-digit OTP code
+    otp = f"{random.randint(100000, 999999)}"
+    pwd_hash, salt = hash_password(password)
+    
+    users[email] = {
+        "password_hash": pwd_hash,
+        "salt": salt,
+        "is_verified": False,
+        "otp": otp
+    }
+    
+    try:
+        with open(LOCAL_USERS_FILE, "w") as f:
+            json.dump(users, f, indent=2)
+    except Exception as e:
+        return False, f"Failed to write user data: {e}"
+        
+    sent = send_local_verification_email(email, otp)
+    if sent:
+        return True, "Verification email sent. Please enter the 6-digit OTP code."
     else:
-        # Local Mode
-        os.makedirs("data", exist_ok=True)
-        users = {}
-        if os.path.exists(LOCAL_USERS_FILE):
-            try:
-                with open(LOCAL_USERS_FILE, "r") as f:
-                    users = json.load(f)
-            except Exception:
-                pass
-                
-        if email in users and users[email].get("is_verified", False):
-            return False, "User already exists with this email."
-            
-        # Generate 6-digit OTP code
-        otp = f"{random.randint(100000, 999999)}"
-        pwd_hash, salt = hash_password(password)
-        
-        users[email] = {
-            "password_hash": pwd_hash,
-            "salt": salt,
-            "is_verified": False,
-            "otp": otp
-        }
-        
-        try:
-            with open(LOCAL_USERS_FILE, "w") as f:
-                json.dump(users, f, indent=2)
-        except Exception as e:
-            return False, f"Failed to write user data: {e}"
-            
-        sent = send_local_verification_email(email, otp)
-        if sent:
-            return True, "Verification email sent. Please enter the OTP to verify."
-        else:
-            return True, "Verification code generated (SMTP not configured. Read notice below)."
+        return True, "Verification code generated (SMTP not configured — see code below)."
 
 def verify_signup_otp(email: str, token: str) -> tuple[bool, str, str]:
     """
-    Verifies OTP token.
+    Verifies OTP token against local users file.
+    Always uses local auth (Supabase is only for data storage).
     Returns (success, user_id_or_email, error_message)
     """
     email = email.lower().strip()
     token = token.strip()
     
-    if IS_SUPABASE_ACTIVE:
+    # Always use local OTP verification
+    if not os.path.exists(LOCAL_USERS_FILE):
+        return False, "", "Registration not started."
+    try:
+        with open(LOCAL_USERS_FILE, "r") as f:
+            users = json.load(f)
+    except Exception:
+        return False, "", "Database read error."
+        
+    if email not in users:
+        return False, "", "Registration not started."
+        
+    user = users[email]
+    if user.get("is_verified", False):
+        return True, email, ""
+        
+    if user.get("otp") == token:
+        user["is_verified"] = True
+        user.pop("otp", None)
+        
         try:
-            # Supabase verify OTP for signup
-            res = supabase_client.auth.verify_otp({"email": email, "token": token, "type": "signup"})
-            return True, res.user.id, ""
-        except Exception as e:
-            return False, "", str(e)
-    else:
-        # Local Mode
-        if not os.path.exists(LOCAL_USERS_FILE):
-            return False, "", "Registration not started."
-        try:
-            with open(LOCAL_USERS_FILE, "r") as f:
-                users = json.load(f)
-        except Exception:
-            return False, "", "Database read error."
-            
-        if email not in users:
-            return False, "", "Registration not started."
-            
-        user = users[email]
-        if user.get("is_verified", False):
+            with open(LOCAL_USERS_FILE, "w") as f:
+                json.dump(users, f, indent=2)
             return True, email, ""
-            
-        if user.get("otp") == token:
-            user["is_verified"] = True
-            user.pop("otp", None) # remove otp from record
-            
-            try:
-                with open(LOCAL_USERS_FILE, "w") as f:
-                    json.dump(users, f, indent=2)
-                return True, email, ""
-            except Exception as e:
-                return False, "", f"Failed to save user verification: {e}"
-        else:
-            return False, "", "Invalid verification code. Please try again."
+        except Exception as e:
+            return False, "", f"Failed to save user verification: {e}"
+    else:
+        return False, "", "Invalid verification code. Please try again."
 
 def start_password_reset(email: str) -> tuple[bool, str]:
     """
-    Step 1 of password reset. Generates and sends OTP reset code.
+    Step 1 of password reset. Generates and sends OTP reset code via SMTP.
+    Always uses local auth (Supabase is only for data storage).
     Returns (success, message_or_error)
     """
     email = email.lower().strip()
     if not email:
         return False, "Please enter your email address."
 
-    if IS_SUPABASE_ACTIVE:
-        try:
-            # Send Supabase password reset email.
-            supabase_client.auth.reset_password_for_email(email)
-            return True, "Password reset email sent (via Supabase)."
-        except Exception as e:
-            return False, str(e)
-    else:
-        # Local Mode
-        if not os.path.exists(LOCAL_USERS_FILE):
-            return False, "User does not exist."
-        try:
-            with open(LOCAL_USERS_FILE, "r") as f:
-                users = json.load(f)
-        except Exception:
-            return False, "Database read error."
-            
-        if email not in users:
-            return False, "User with this email does not exist."
-            
-        # Generate 6-digit OTP code for reset
-        otp = f"{random.randint(100000, 999999)}"
-        users[email]["reset_otp"] = otp
+    # Always use local auth with SMTP OTP
+    if not os.path.exists(LOCAL_USERS_FILE):
+        return False, "User does not exist."
+    try:
+        with open(LOCAL_USERS_FILE, "r") as f:
+            users = json.load(f)
+    except Exception:
+        return False, "Database read error."
         
-        try:
-            with open(LOCAL_USERS_FILE, "w") as f:
-                json.dump(users, f, indent=2)
-        except Exception as e:
-            return False, f"Failed to save reset request: {e}"
-            
-        sent = send_local_verification_email(email, otp)
-        if sent:
-            return True, "Verification code sent to your email."
-        else:
-            return True, "Verification code generated (SMTP not configured. Read notice below)."
+    if email not in users:
+        return False, "User with this email does not exist."
+        
+    # Generate 6-digit OTP code for reset
+    otp = f"{random.randint(100000, 999999)}"
+    users[email]["reset_otp"] = otp
+    
+    try:
+        with open(LOCAL_USERS_FILE, "w") as f:
+            json.dump(users, f, indent=2)
+    except Exception as e:
+        return False, f"Failed to save reset request: {e}"
+        
+    sent = send_local_verification_email(email, otp)
+    if sent:
+        return True, "Verification code sent to your email."
+    else:
+        return True, "Verification code generated (SMTP not configured — see code below)."
 
 def complete_password_reset(email: str, token: str, new_password: str) -> tuple[bool, str]:
     """
     Step 2 of password reset. Verifies OTP code and updates password.
+    Always uses local auth (Supabase is only for data storage).
     Returns (success, message_or_error)
     """
     email = email.lower().strip()
@@ -335,50 +313,40 @@ def complete_password_reset(email: str, token: str, new_password: str) -> tuple[
     if len(new_password) < 6:
         return False, "New password must be at least 6 characters long."
         
-    if IS_SUPABASE_ACTIVE:
-        try:
-            # For Supabase, verify the recovery OTP token first
-            res = supabase_client.auth.verify_otp({"email": email, "token": token, "type": "recovery"})
-            # If successful, we have a session. Update the user password.
-            supabase_client.auth.update_user({"password": new_password})
-            return True, "Password reset successfully! You can now log in."
-        except Exception as e:
-            return False, str(e)
-    else:
-        # Local Mode
-        if not os.path.exists(LOCAL_USERS_FILE):
-            return False, "Database does not exist."
-        try:
-            with open(LOCAL_USERS_FILE, "r") as f:
-                users = json.load(f)
-        except Exception:
-            return False, "Database read error."
-            
-        if email not in users:
-            return False, "User does not exist."
-            
-        user = users[email]
-        if "reset_otp" not in user or user["reset_otp"] != token:
-            return False, "Invalid reset code. Please check and try again."
-            
-        # Update password
-        pwd_hash, salt = hash_password(new_password)
-        user["password_hash"] = pwd_hash
-        user["salt"] = salt
-        user.pop("reset_otp", None) # remove reset otp
+    # Always use local auth
+    if not os.path.exists(LOCAL_USERS_FILE):
+        return False, "Database does not exist."
+    try:
+        with open(LOCAL_USERS_FILE, "r") as f:
+            users = json.load(f)
+    except Exception:
+        return False, "Database read error."
         
-        try:
-            with open(LOCAL_USERS_FILE, "w") as f:
-                json.dump(users, f, indent=2)
-            return True, "Password reset successfully! You can now log in."
-        except Exception as e:
-            return False, f"Failed to save new password: {e}"
+    if email not in users:
+        return False, "User does not exist."
+        
+    user = users[email]
+    if "reset_otp" not in user or user["reset_otp"] != token:
+        return False, "Invalid reset code. Please check and try again."
+        
+    # Update password
+    pwd_hash, salt = hash_password(new_password)
+    user["password_hash"] = pwd_hash
+    user["salt"] = salt
+    user.pop("reset_otp", None)
+    
+    try:
+        with open(LOCAL_USERS_FILE, "w") as f:
+            json.dump(users, f, indent=2)
+        return True, "Password reset successfully! You can now log in."
+    except Exception as e:
+        return False, f"Failed to save new password: {e}"
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  USER DATA PERSISTENCE
 # ══════════════════════════════════════════════════════════════════════════════
 def save_chat_history(user_id: str, history: list):
-    if IS_SUPABASE_ACTIVE:
+    if is_supabase_active():
         try:
             supabase_client.table("chat_history").upsert({
                 "user_id": user_id,
@@ -397,7 +365,7 @@ def save_chat_history(user_id: str, history: list):
             print(f"Error saving local chat history: {e}")
 
 def load_chat_history(user_id: str) -> list:
-    if IS_SUPABASE_ACTIVE:
+    if is_supabase_active():
         try:
             res = supabase_client.table("chat_history").select("history_json").eq("user_id", user_id).execute()
             if res.data:
@@ -418,7 +386,7 @@ def load_chat_history(user_id: str) -> list:
         return []
 
 def save_progress(user_id: str, progress_data: dict):
-    if IS_SUPABASE_ACTIVE:
+    if is_supabase_active():
         try:
             supabase_client.table("progress").upsert({
                 "user_id": user_id,
@@ -442,7 +410,7 @@ def load_progress(user_id: str) -> dict:
         "quiz_results": [],
         "streak_days": [],
     }
-    if IS_SUPABASE_ACTIVE:
+    if is_supabase_active():
         try:
             res = supabase_client.table("progress").select("progress_json").eq("user_id", user_id).execute()
             if res.data:
@@ -463,7 +431,7 @@ def load_progress(user_id: str) -> dict:
         return default_progress
 
 def save_api_settings(user_id: str, settings: dict):
-    if IS_SUPABASE_ACTIVE:
+    if is_supabase_active():
         try:
             supabase_client.table("api_settings").upsert({
                 "user_id": user_id,
@@ -496,7 +464,7 @@ def load_api_settings(user_id: str) -> dict:
             "knowledge_graph": {"model": "gemini-2.5-flash", "api_key": ""},
         }
     }
-    if IS_SUPABASE_ACTIVE:
+    if is_supabase_active():
         try:
             res = supabase_client.table("api_settings").select("settings_json").eq("user_id", user_id).execute()
             if res.data:
@@ -539,7 +507,7 @@ def save_vector_store(user_id: str, chunks: list, metadata: list, faiss_index_fi
     Saves vector chunks, metadata, and FAISS index file.
     faiss_index_filepath is the path to the temp .faiss file on disk that was just written.
     """
-    if IS_SUPABASE_ACTIVE:
+    if is_supabase_active():
         try:
             # Upload chunks.json
             chunks_json = json.dumps(chunks, ensure_ascii=False, indent=2).encode('utf-8')
@@ -591,7 +559,7 @@ def load_vector_store(user_id: str) -> tuple[list, list, str | None]:
     Downloads/retrieves chunks, metadata, and returns a filepath to the .faiss index file.
     Returns (chunks, metadata, faiss_index_filepath)
     """
-    if IS_SUPABASE_ACTIVE:
+    if is_supabase_active():
         user_dir = os.path.join("data", "temp_downloads", user_id)
         os.makedirs(user_dir, exist_ok=True)
         
@@ -646,7 +614,7 @@ def load_vector_store(user_id: str) -> tuple[list, list, str | None]:
         return [], [], None
 
 def clear_vector_store_files(user_id: str):
-    if IS_SUPABASE_ACTIVE:
+    if is_supabase_active():
         try:
             supabase_client.storage.from_("vector_stores").remove([
                 f"{user_id}/chunks.json",

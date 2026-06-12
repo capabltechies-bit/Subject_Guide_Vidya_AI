@@ -127,7 +127,7 @@ def add_documents(processed_docs: list, api_key: str = None) -> None:
         print("No chunks to add!")
         return
 
-    print(f"Embedding {len(new_chunks)} chunks…")
+    print(f"Embedding {len(new_chunks)} chunks...")
     vectors = [embed_text(c, api_key=api_key) for c in new_chunks]
     matrix  = np.array(vectors, dtype="float32")
 
@@ -137,7 +137,7 @@ def add_documents(processed_docs: list, api_key: str = None) -> None:
     faiss_index.add(matrix)
     chunks_store.extend(new_chunks)
     metadata_store.extend(new_meta)
-    print(f"✅ Total chunks indexed: {len(chunks_store)}")
+    print(f"[OK] Total chunks indexed: {len(chunks_store)}")
 
 
 # ── Standard search ───────────────────────────────────────────────────────────
