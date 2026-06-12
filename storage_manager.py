@@ -6,7 +6,10 @@ import random
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from pathlib import Path
+from dotenv import load_dotenv
 import streamlit as st
+
+load_dotenv(override=True)
 
 # Check if Supabase credentials are provided
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
@@ -80,9 +83,9 @@ def send_local_verification_email(email_to: str, code: str) -> bool:
         msg = MIMEMultipart()
         msg['From'] = smtp_from
         msg['To'] = email_to
-        msg['Subject'] = "Vidya AI - Email Verification Code"
+        msg['Subject'] = "Scholar AI - Email Verification Code"
         
-        body = f"""Welcome to Vidya AI!
+        body = f"""Welcome to Scholar AI!
         
 Your email verification code is: {code}
         
@@ -625,3 +628,23 @@ def clear_vector_store_files(user_id: str):
                     os.remove(path)
                 except Exception as e:
                     print(f"Error removing {path}: {e}")
+
+def get_registered_users_count() -> int:
+    if IS_SUPABASE_ACTIVE:
+        try:
+            res = supabase_client.table("users").select("id", count="exact").execute()
+            if res.count is not None:
+                return res.count
+        except Exception:
+            pass
+        return 1
+    else:
+        if os.path.exists(LOCAL_USERS_FILE):
+            try:
+                with open(LOCAL_USERS_FILE, "r") as f:
+                    users = json.load(f)
+                    return len(users)
+            except Exception:
+                pass
+        return 0
+

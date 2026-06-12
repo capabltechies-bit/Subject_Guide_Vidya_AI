@@ -13,7 +13,7 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 from vector_store import search, search_cross_document
 
-load_dotenv()
+load_dotenv(override=True)
 genai.configure(api_key=os.environ.get("GOOGLE_API_KEY", ""))
 
 _MODEL = "gemini-2.5-flash"
