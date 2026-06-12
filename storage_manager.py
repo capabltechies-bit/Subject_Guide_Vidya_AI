@@ -53,6 +53,17 @@ def is_supabase_active() -> bool:
 def __getattr__(name: str):
     if name == "IS_SUPABASE_ACTIVE":
         return is_supabase_active()
+    if name == "IS_SUPABASE_CONFIGURED":
+        url = os.environ.get("SUPABASE_URL", "")
+        key = os.environ.get("SUPABASE_KEY", "")
+        if not url or not key:
+            try:
+                if hasattr(st, "secrets") and st.secrets:
+                    url = st.secrets.get("SUPABASE_URL", url)
+                    key = st.secrets.get("SUPABASE_KEY", key)
+            except Exception:
+                pass
+        return bool(url and key)
     if name in globals():
         return globals()[name]
     raise AttributeError(f"module {__name__} has no attribute {name}")
