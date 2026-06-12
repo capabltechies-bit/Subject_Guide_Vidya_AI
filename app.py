@@ -1567,13 +1567,16 @@ st.markdown("""
   <div class="chat-console-body">
 """, unsafe_allow_html=True)
 
+if "chat_input_key" not in st.session_state:
+    st.session_state.chat_input_key = 0
+
 col_input, col_btn = st.columns([6, 1], gap="small")
 with col_input:
     global_query = st.text_input(
         "global_chat_bar",
         placeholder=placeholder_txt,
         label_visibility="collapsed",
-        key="global_chat_input",
+        key=f"global_chat_input_{st.session_state.chat_input_key}",
     )
 with col_btn:
     global_ask_btn = st.button("Ask", use_container_width=True, type="primary", key="global_send_btn")
@@ -1613,5 +1616,5 @@ if (global_ask_btn or (global_query and global_query != "")) and global_query:
         
         # Reset input and view
         st.session_state.view = "chat"
-        st.session_state.global_chat_input = ""
+        st.session_state.chat_input_key += 1
         st.rerun()
