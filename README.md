@@ -1,182 +1,110 @@
-# 📚 Subject Guide & Question Bank Assistant
+# 🎓 Vidya AI (विद्या) — Smart Subject Guide & Q-Bank Assistant
 
-> **Capabl.in · AI Agent Development Project — Week 1–2 Milestone**
+> **Capabl.in · AI Agent Development Project — Milestone Phase**
 >
-> A multi-document academic assistant that explains topics and solves exam questions using Retrieval-Augmented Generation (RAG).
+> An advanced, multi-document academic assistant that generates customized study paths, dynamic question banks, interactive knowledge graphs, and RAG-based explanations. Powered by a robust backend supporting offline-first storage and automatic multi-provider key failover.
 
 ---
 
-## 🚀 Quick Start
+## 🌟 Key Features
 
-### 1. Clone the repo
+*   **🔒 Secure User Accounts & Email Verification**: Supports individual user registration and login. Secures your account using a verification OTP sent to your email (simulated via terminal fallback if SMTP is absent).
+*   **💾 Hybrid Storage Engine (Local + Cloud)**:
+    *   *Local Offline Mode*: Saves user metadata, history, settings, and FAISS vector indices safely inside local directories.
+    *   *Supabase Cloud Mode*: Integrates with Supabase Auth, database, and buckets for zero-cost permanent cloud deployment.
+*   **📖 Adaptive RAG Explanations**: Explains any topic at three custom academic levels:
+    *   *Beginner*: Simple language, analogies, no complex jargon.
+    *   *Intermediate*: Balanced theory, worked examples, key takeaways.
+    *   *Advanced*: Highly technical depth, design choices, trade-offs, and edge cases.
+*   **📋 Academic Question Bank (Q-Bank)**: Generates customized MCQs, Short-Answer, Long-Answer questions, and full assessments directly from study materials, complete with answers and explanations.
+*   **🕸️ Interactive Knowledge Graph**: Builds visual, node-based maps of topics, subtopics, and logical prerequisites using `vis.js` rendering.
+*   **🗺️ Customized Learning Paths**: Maps study progression sequentially (Theory ➡️ Worked Examples ➡️ Mock Quizzes).
+*   **⚡ High-Availability Key Rotation & Failover**: 
+    *   Accepts comma-separated lists of API keys for each provider to automatically bypass rate-limits and quotas.
+    *   Seamlessly fails over down the provider chain: **Google Gemini ➡️ Groq (Free Tier LLaMA) ➡️ OpenRouter (Free Tier LLaMA)**.
+*   **📱 Responsive Mobile Layout**: Adapted with collapsible sidebar menus and vertical flow adjustments that render beautifully on smart devices.
+
+---
+
+## 🚀 Quick Start (Local Setup)
+
+### 1. Clone the repository
 ```bash
-git clone https://github.com/<your-team>/subject-guide-assistant.git
-cd subject-guide-assistant
+git clone https://github.com/capabltechies-bit/Subject_Guide_Vidya_AI.git
+cd Subject_Guide_Vidya_AI
 ```
 
-### 2. Create a virtual environment
+### 2. Create and activate a Virtual Environment
 ```bash
 python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+# On Windows:
+venv\Scripts\activate
+# On macOS/Linux:
+source venv/bin/activate
 ```
 
-### 3. Install dependencies
+### 3. Install required packages
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Set your API key
-Create a `.env` file (never commit this!):
+### 4. Configure environment keys
+Copy the template configuration file:
+```bash
+copy .env.example .env   # macOS/Linux: cp .env.example .env
 ```
-GOOGLE_API_KEY=your-google-api-key-here
-```
+Open `.env` and fill in your keys (e.g. `GOOGLE_API_KEY`). You can specify multiple keys separated by commas for failover.
 
-### 5. Run the app
+### 5. Launch the application
 ```bash
 streamlit run app.py
 ```
-
-Open `http://localhost:8501` in your browser.
-
----
-
-## 🏗️ Project Structure
-
-```
-subject-guide-assistant/
-├── app.py                  # Streamlit UI (Chat + Upload views)
-├── document_processor.py   # PDF / DOCX / PPTX / TXT extraction + chunking
-├── vector_store.py         # FAISS vector store + Google Gemini embeddings
-├── rag_engine.py           # RAG pipeline — topic explainer & exam solver
-├── requirements.txt        # Python dependencies
-├── .env                    # API keys (never commit!)
-└── README.md               # This file
-```
+Open `http://localhost:8501` to use **Vidya AI**.
 
 ---
 
-## 🌟 Features (Week 1–2)
+## ⚙️ How to Configure Failover Keys
 
-| Feature | Status |
+Navigate to the **Settings (⚙️ Settings)** tab in the top navigation bar inside the app UI to configure backup keys:
+1. **Google Gemini Key(s)**: Main pool of keys used by default.
+2. **Groq API Key(s)**: First failover tier. Uses `llama-3.1-70b-versatile` to handle academic tasks for free.
+3. **OpenRouter API Key(s)**: Second failover tier. Uses free models (like `meta-llama/llama-3-8b-instruct:free`).
+
+*Note: You can supply a single key or multiple keys separated by commas (e.g. `gsk_key1, gsk_key2`) for rotating and preventing quota blocks.*
+
+---
+
+## 🏗️ Project Architecture
+
+```text
+Subject_Guide_Vidya_AI/
+├── app.py                  # Streamlit User Interface & Nav Controller
+├── llm_client.py           # Multi-provider LLM failover & key rotation client
+├── storage_manager.py      # Abstracted storage layer (Local Files vs. Supabase)
+├── vector_store.py         # FAISS vector database wrapper & Gemini Embeddings
+├── rag_engine.py           # Core synthesis, explanations, and learning path logic
+├── question_bank.py        # Question bank generation generator (MCQ/Short/Long)
+├── knowledge_graph.py      # Vis.js-ready node & connection builder
+├── progress_tracker.py     # Local streak calendar, quiz logs, and dashboard
+├── requirements.txt        # Third-party Python dependencies
+├── .env.example            # Environment template configuration file
+└── README.md               # Application documentation
+```
+
+---
+
+## 🛠️ Technology Stack
+
+| Layer | Tools |
 |---|---|
-| Multi-format upload (PDF, DOCX, PPTX, TXT) | ✅ |
-| Auto content-type detection (textbook / notes / question paper / lab) | ✅ |
-| FAISS-powered semantic search | ✅ |
-| Google Gemini embeddings (text-embedding-004) | ✅ |
-| Topic explanation with structured output | ✅ |
-| Exam question solving with mark-aware breakdown | ✅ |
-| Source attribution for every answer | ✅ |
-| Chat-style conversation history | ✅ |
-| Modern dark-themed Streamlit UI | ✅ |
-| Streamlit Cloud deployment | ✅ |
+| **Frontend UI** | Streamlit 1.58+ (Custom dark theme styling) |
+| **Logic & RAG Engine** | Python 3.11, Google Gemini 2.5, LangChain |
+| **Vector Index** | FAISS (In-memory similarity retrieval) |
+| **Failover Providers** | Groq (LLaMA 70B), OpenRouter (LLaMA 8B) |
+| **Parsers** | pdfplumber, PyPDF2, python-docx, python-pptx |
+| **Authentication** | Supabase Auth (Cloud) / Cryptographic Salting (Local) |
+| **Database/Storage** | Supabase Storage + PostgreSQL (Cloud) / Local Disk JSON |
 
 ---
 
-## ☁️ Deploy to Streamlit Cloud
-
-1. Push this repo to GitHub (make sure `.env` is in `.gitignore`)
-2. Go to [share.streamlit.io](https://share.streamlit.io)
-3. Connect your GitHub repo → select `app.py`
-4. Add your API key in **Secrets** (Settings → Secrets):
-   ```toml
-   GOOGLE_API_KEY = "your-google-api-key-here"
-   ```
-5. Click **Deploy** 🎉
-
----
-
-## 📖 How It Works
-
-```
-Upload PDF / DOCX / PPTX / TXT
-        │
-        ▼
-document_processor.py
-  • Extracts text by format (pdfplumber, python-docx, python-pptx)
-  • Detects content type via keyword heuristics
-    (textbook / notes / question_paper / lab_manual)
-  • Splits into overlapping 800-char chunks (150-char overlap)
-        │
-        ▼
-vector_store.py
-  • Embeds chunks via Google Gemini text-embedding-004
-  • Stores vectors in FAISS IndexFlatL2 (in-memory)
-        │
-        ▼
-User Query (Chat UI)
-  • Embed query → FAISS similarity search → top-k chunks
-  • Build prompt with retrieved context + question
-  • Call Gemini 1.5 Flash via rag_engine.py
-  • Return structured answer + source attribution
-```
-
----
-
-## 🛠️ Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Frontend | Streamlit 1.35+ |
-| Backend | Python 3.11 |
-| Vector DB | FAISS (local, in-memory) |
-| LLM | Google Gemini 1.5 Flash |
-| Embeddings | Google Gemini text-embedding-004 |
-| PDF parsing | pdfplumber + PyPDF2 |
-| DOCX parsing | python-docx |
-| PPTX parsing | python-pptx |
-| API SDK | google-generativeai / google-genai |
-
----
-
-## 📦 Requirements
-
-```
-streamlit
-google-generativeai
-google-genai
-faiss-cpu
-pdfplumber
-PyPDF2
-python-docx
-python-pptx
-python-dotenv
-numpy
-```
-
-Install all at once:
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## 👥 Team Checklist (Week 1–2)
-
-- [x] GitHub repo with project structure
-- [x] Development environment (Python, Streamlit, FAISS, Gemini)
-- [x] Multi-format document processing (PDF, DOCX, PPTX, TXT)
-- [x] Content categorization (notes / textbook / question paper / lab)
-- [x] Topic-based retrieval system (FAISS + Gemini embeddings)
-- [x] RAG pipeline with topic explainer and exam solver modes
-- [x] Streamlit chat UI with upload + query views
-- [x] Modern dark-themed UI with custom CSS
-- [ ] Deploy on Streamlit Cloud ← **do this as a team**
-- [ ] Record 2-minute demo video
-
----
-
-## 📝 .gitignore Template
-
-```
-.env
-venv/
-__pycache__/
-*.pyc
-*.faiss
-*.meta
-.streamlit/secrets.toml
-```
-
----
-
-*Built as part of the Capabl.in Subject Guide & QBank AI Agent project.*
+*Developed for the Capabl.in Subject Guide & QBank AI Agent Development project.*
