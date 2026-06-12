@@ -21,12 +21,11 @@ load_dotenv()
 
 # Streamlit Cloud deployment: Inject st.secrets into os.environ so all modules can find the keys
 try:
-    if hasattr(st, "secrets") and st.secrets:
-        for k, v in st.secrets.items():
-            if isinstance(v, str):
-                os.environ[k] = v
-except Exception:
-    pass
+    if hasattr(st, "secrets"):
+        for k in st.secrets:
+            os.environ[k] = str(st.secrets[k])
+except Exception as e:
+    print("Secrets injection error:", e)
 
 import storage_manager as sm
 from vector_store      import get_stats, add_documents
@@ -109,6 +108,8 @@ def get_api_key_and_model(mode: str) -> tuple[str, str]:
             key = st.session_state.api_settings.get("default_api_key", "")
         if not key:
             key = os.environ.get("GOOGLE_API_KEY", "")
+            if not key and hasattr(st, "secrets") and "GOOGLE_API_KEY" in st.secrets:
+                key = str(st.secrets["GOOGLE_API_KEY"])
         return key, model
     
     default_models = {
@@ -120,7 +121,10 @@ def get_api_key_and_model(mode: str) -> tuple[str, str]:
         "qbank": "gemini-2.5-flash",
         "knowledge_graph": "gemini-2.5-flash"
     }
-    return os.environ.get("GOOGLE_API_KEY", ""), default_models.get(mode, "gemini-2.5-flash")
+    key = os.environ.get("GOOGLE_API_KEY", "")
+    if not key and hasattr(st, "secrets") and "GOOGLE_API_KEY" in st.secrets:
+        key = str(st.secrets["GOOGLE_API_KEY"])
+    return key, default_models.get(mode, "gemini-2.5-flash")
 
 def load_user_session_data(user_id: str):
     import vector_store as vs

@@ -66,6 +66,14 @@ def _detect_subject(filename: str, text_sample: str = "") -> str:
 # ── Embedding ─────────────────────────────────────────────────────────────────
 def embed_text(text: str, api_key: str = None) -> list:
     raw_key = api_key or os.environ.get("GOOGLE_API_KEY", "")
+    if not raw_key:
+        try:
+            import streamlit as st
+            if hasattr(st, "secrets") and "GOOGLE_API_KEY" in st.secrets:
+                raw_key = str(st.secrets["GOOGLE_API_KEY"])
+        except Exception:
+            pass
+            
     keys = [k.strip() for k in raw_key.split(",") if k.strip()]
     if not keys:
         raise Exception("No Google API Key configured.")
