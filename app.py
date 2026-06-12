@@ -19,6 +19,15 @@ sys.stdout.reconfigure(encoding='utf-8')
 # Initialize environment variables
 load_dotenv()
 
+# Streamlit Cloud deployment: Inject st.secrets into os.environ so all modules can find the keys
+try:
+    if hasattr(st, "secrets") and st.secrets:
+        for k, v in st.secrets.items():
+            if isinstance(v, str):
+                os.environ[k] = v
+except Exception:
+    pass
+
 import storage_manager as sm
 from vector_store      import get_stats, add_documents
 from document_processor import process_document
