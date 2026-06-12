@@ -238,6 +238,100 @@ def verify_signup_otp(email: str, token: str) -> tuple[bool, str, str]:
         else:
             return False, "", "Invalid verification code. Please try again."
 
+def start_password_reset(email: str) -> tuple[bool, str]:
+    """
+    Step 1 of password reset. Generates and sends OTP reset code.
+    Returns (success, message_or_error)
+    """
+    email = email.lower().strip()
+    if not email:
+        return False, "Please enter your email address."
+
+    if IS_SUPABASE_ACTIVE:
+        try:
+            # Send Supabase password reset email.
+            supabase_client.auth.reset_password_for_email(email)
+            return True, "Password reset email sent (via Supabase)."
+        except Exception as e:
+            return False, str(e)
+    else:
+        # Local Mode
+        if not os.path.exists(LOCAL_USERS_FILE):
+            return False, "User does not exist."
+        try:
+            with open(LOCAL_USERS_FILE, "r") as f:
+                users = json.load(f)
+        except Exception:
+            return False, "Database read error."
+            
+        if email not in users:
+            return False, "User with this email does not exist."
+            
+        # Generate 6-digit OTP code for reset
+        otp = f"{random.randint(100000, 999999)}"
+        users[email]["reset_otp"] = otp
+        
+        try:
+            with open(LOCAL_USERS_FILE, "w") as f:
+                json.dump(users, f, indent=2)
+        except Exception as e:
+            return False, f"Failed to save reset request: {e}"
+            
+        sent = send_local_verification_email(email, otp)
+        if sent:
+            return True, "Verification code sent to your email."
+        else:
+            return True, "Verification code generated (SMTP not configured. Read notice below)."
+
+def complete_password_reset(email: str, token: str, new_password: str) -> tuple[bool, str]:
+    """
+    Step 2 of password reset. Verifies OTP code and updates password.
+    Returns (success, message_or_error)
+    """
+    email = email.lower().strip()
+    token = token.strip()
+    if len(new_password) < 6:
+        return False, "New password must be at least 6 characters long."
+        
+    if IS_SUPABASE_ACTIVE:
+        try:
+            # For Supabase, verify the recovery OTP token first
+            res = supabase_client.auth.verify_otp({"email": email, "token": token, "type": "recovery"})
+            # If successful, we have a session. Update the user password.
+            supabase_client.auth.update_user({"password": new_password})
+            return True, "Password reset successfully! You can now log in."
+        except Exception as e:
+            return False, str(e)
+    else:
+        # Local Mode
+        if not os.path.exists(LOCAL_USERS_FILE):
+            return False, "Database does not exist."
+        try:
+            with open(LOCAL_USERS_FILE, "r") as f:
+                users = json.load(f)
+        except Exception:
+            return False, "Database read error."
+            
+        if email not in users:
+            return False, "User does not exist."
+            
+        user = users[email]
+        if "reset_otp" not in user or user["reset_otp"] != token:
+            return False, "Invalid reset code. Please check and try again."
+            
+        # Update password
+        pwd_hash, salt = hash_password(new_password)
+        user["password_hash"] = pwd_hash
+        user["salt"] = salt
+        user.pop("reset_otp", None) # remove reset otp
+        
+        try:
+            with open(LOCAL_USERS_FILE, "w") as f:
+                json.dump(users, f, indent=2)
+            return True, "Password reset successfully! You can now log in."
+        except Exception as e:
+            return False, f"Failed to save new password: {e}"
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  USER DATA PERSISTENCE
 # ══════════════════════════════════════════════════════════════════════════════

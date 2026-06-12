@@ -168,9 +168,15 @@ if not st.session_state.logged_in:
                         
             st.markdown("<hr style='border-color: #2a3045; margin: 20px 0 !important;'>", unsafe_allow_html=True)
             st.markdown('<p style="font-size:13px; text-align:center; color: #a0a8c0;">Don\'t have an account?</p>', unsafe_allow_html=True)
-            if st.button("Create Account", use_container_width=True, type="secondary"):
-                st.session_state.auth_view = "register"
-                st.rerun()
+            c_fp1, c_fp2 = st.columns([1, 1], gap="small")
+            with c_fp1:
+                if st.button("Create Account", use_container_width=True, type="secondary"):
+                    st.session_state.auth_view = "register"
+                    st.rerun()
+            with c_fp2:
+                if st.button("Forgot Password?", use_container_width=True, type="secondary"):
+                    st.session_state.auth_view = "forgot_password"
+                    st.rerun()
                 
         elif st.session_state.auth_view == "register":
             st.markdown('<h2 style="font-family:\'Lora\', serif; text-align:center; margin-bottom: 24px; color: #eceef5;">🌱 Create Account</h2>', unsafe_allow_html=True)
@@ -224,6 +230,61 @@ if not st.session_state.logged_in:
             st.markdown("<hr style='border-color: #2a3045; margin: 20px 0 !important;'>", unsafe_allow_html=True)
             if st.button("Cancel & Register Again", use_container_width=True, type="secondary"):
                 st.session_state.auth_view = "register"
+                st.session_state.local_otp_fallback = None
+                st.rerun()
+
+        elif st.session_state.auth_view == "forgot_password":
+            st.markdown('<h2 style="font-family:\'Lora\', serif; text-align:center; margin-bottom: 24px; color: #eceef5;">🔑 Reset Password</h2>', unsafe_allow_html=True)
+            st.markdown('<p style="font-size:13px; text-align:center; color: #a0a8c0;">Enter your email to receive a password reset verification code.</p>', unsafe_allow_html=True)
+            reset_email = st.text_input("Email", placeholder="you@example.com")
+            
+            st.markdown("<div style='height:15px'></div>", unsafe_allow_html=True)
+            if st.button("Send Reset Code →", use_container_width=True, type="primary"):
+                success, msg = sm.start_password_reset(reset_email)
+                if success:
+                    st.session_state.reg_email = reset_email
+                    st.session_state.auth_view = "verify_reset"
+                    st.success(msg)
+                    st.rerun()
+                else:
+                    st.error(msg)
+                    
+            st.markdown("<hr style='border-color: #2a3045; margin: 20px 0 !important;'>", unsafe_allow_html=True)
+            if st.button("Back to Login", use_container_width=True, type="secondary"):
+                st.session_state.auth_view = "login"
+                st.rerun()
+
+        elif st.session_state.auth_view == "verify_reset":
+            st.markdown('<h2 style="font-family:\'Lora\', serif; text-align:center; margin-bottom: 24px; color: #eceef5;">🔒 Enter Reset Details</h2>', unsafe_allow_html=True)
+            st.markdown(f'<p style="font-size:13px; text-align:center; color: #a0a8c0;">Enter the reset code sent to <strong>{st.session_state.reg_email}</strong> and choose a new password.</p>', unsafe_allow_html=True)
+            
+            if "local_otp_fallback" in st.session_state and st.session_state.local_otp_fallback:
+                st.info(f"ℹ️ SMTP not configured. OTP code for testing: **{st.session_state.local_otp_fallback}**")
+                
+            reset_code = st.text_input("Reset Code", placeholder="123456")
+            new_password = st.text_input("New Password", type="password", placeholder="••••••••")
+            
+            st.markdown("<div style='height:15px'></div>", unsafe_allow_html=True)
+            if st.button("Update Password & Log In →", use_container_width=True, type="primary"):
+                success, msg = sm.complete_password_reset(st.session_state.reg_email, reset_code, new_password)
+                if success:
+                    st.success(msg)
+                    login_success, login_uid, login_err = sm.sign_in(st.session_state.reg_email, new_password)
+                    if login_success:
+                        st.session_state.logged_in = True
+                        st.session_state.logged_in_user = login_uid
+                        st.session_state.local_otp_fallback = None
+                        load_user_session_data(login_uid)
+                        st.rerun()
+                    else:
+                        st.session_state.auth_view = "login"
+                        st.rerun()
+                else:
+                    st.error(msg)
+                    
+            st.markdown("<hr style='border-color: #2a3045; margin: 20px 0 !important;'>", unsafe_allow_html=True)
+            if st.button("Cancel", use_container_width=True, type="secondary"):
+                st.session_state.auth_view = "login"
                 st.session_state.local_otp_fallback = None
                 st.rerun()
                 
