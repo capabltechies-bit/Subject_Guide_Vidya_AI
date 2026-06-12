@@ -93,6 +93,72 @@ Subject_Guide_Vidya_AI/
 
 ---
 
+## 🧬 System Architecture & Pipelines
+
+Vidya AI consists of three interconnected modular pipelines: **Ingestion & Indexing**, **Hybrid Storage Middleware**, and the **Dynamic LLM Failover & Rotation Chain**.
+
+### 1. Ingestion & Semantic Indexing Pipeline
+```mermaid
+graph TD
+    A[Upload Files: PDF, DOCX, PPTX, TXT] --> B[document_processor.py]
+    B -->|Format-Specific Extraction| C[Extract Clean Text]
+    B -->|Categorize Content| D[Categorize: Textbook, Notes, Labs, Exams]
+    C -->|Split Chunks| E[800-Character Chunks with 150-Char Overlap]
+    E --> F[vector_store.py]
+    F -->|Request Embeddings| G[Gemini: text-embedding-004]
+    G -->|Retrieve Embed Vectors| H[FAISS IndexFlatL2 Store]
+    H -->|Save local/cloud binary| I[vector_store.faiss & JSON metadata]
+```
+
+### 2. Multi-Provider API Failover & Key Rotation Pipeline
+```mermaid
+flowchart TD
+    A[App Core: Chat, Q-Bank, Graph] -->|Request LLM completion| B[llm_client.py: call_llm]
+    B --> C{Attempt Google Gemini}
+    C -->|Success| D[Return Response to App]
+    C -->|Failure: 429/Quota Exhausted| E{More Gemini Keys left?}
+    E -->|Yes| F[Switch to Next Gemini Key] --> C
+    E -->|No| G{Groq Keys configured?}
+    G -->|Yes| H{Attempt Groq: LLaMA-3.1-70B}
+    G -->|No| K{OpenRouter Keys configured?}
+    H -->|Success| D
+    H -->|Failure: 429/Limit| I{More Groq Keys left?}
+    I -->|Yes| J[Switch to Next Groq Key] --> H
+    I -->|No| K
+    K -->|Yes| L{Attempt OpenRouter: LLaMA-3-8B}
+    K -->|No| M[Raise Exhaustion Exception]
+    L -->|Success| D
+    L -->|Failure| N{More OpenRouter Keys left?}
+    N -->|Yes| O[Switch to Next OpenRouter Key] --> L
+    N -->|No| M
+```
+
+### 3. Hybrid Storage Middleware
+The database adapter automatically selects the best available storage engine at runtime:
+```text
+                  ┌────────────────────────┐
+                  │   storage_manager.py   │
+                  └───────────┬────────────┘
+                              │
+             Is Supabase configured in env/secrets?
+                              │
+              ┌───────────────┴───────────────┐
+              │                               │
+             No                              Yes
+              │                               │
+              ▼                               ▼
+     ┌──────────────────┐           ┌──────────────────┐
+     │  Local Database  │           │  Cloud Database  │
+     │  (Offline-First) │           │ (Supabase Backend)│
+     ├──────────────────┤           ├──────────────────┤
+     │ • JSON metadata  │           │ • PostgreSQL DB  │
+     │ • Local FAISS    │           │ • Auth tables    │
+     │ • SHA-256 salts  │           │ • Storage Bucket │
+     └──────────────────┘           └──────────────────┘
+```
+
+---
+
 ## 🛠️ Technology Stack
 
 | Layer | Tools |
