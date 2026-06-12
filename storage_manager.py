@@ -53,6 +53,8 @@ def is_supabase_active() -> bool:
 def __getattr__(name: str):
     if name == "IS_SUPABASE_ACTIVE":
         return is_supabase_active()
+    if name in globals():
+        return globals()[name]
     raise AttributeError(f"module {__name__} has no attribute {name}")
 
 # Local database file path
