@@ -100,55 +100,156 @@ def load_user_session_data(user_id: str):
     if chunks and metadata and faiss_filepath:
         vs.load_user_vector_store(chunks, metadata, faiss_filepath)
         st.session_state.indexed = True
-    else:
-        vs.clear_vector_store()
-        st.session_state.indexed = False
-
-def logout_user():
-    import vector_store as vs
-    vs.clear_vector_store()
-    
-    st.session_state.logged_in = False
-    st.session_state.logged_in_user = None
-    st.session_state.history = []
-    st.session_state.indexed = False
-    st.session_state.kg_data = None
-    st.session_state.lp_result = None
-    st.session_state.qb_result = None
-    st.session_state.progress_data = {
-        "sessions":    [],
-        "quiz_results": [],
-        "streak_days": [],
-    }
-    st.session_state.api_settings = None
-    st.session_state.view = "chat"
-
-# Block access if not logged in
+  # Block access if not logged in
 if not st.session_state.logged_in:
     st.markdown("""
     <style>
-    html, body, .stApp { background: #0d0f14 !important; font-family: 'Sora', sans-serif; color: #eceef5; }
+    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,600;1,400&family=Outfit:wght@300;400;500;600;700&display=swap');
+    
+    html, body, .stApp {
+        background: #090b0e !important;
+        font-family: 'Outfit', sans-serif !important;
+        color: #eceef5;
+    }
+    
+    /* Glowing orb blobs behind card */
+    .stApp::before {
+        content: "";
+        position: fixed;
+        top: -10%;
+        left: -10%;
+        width: 60%;
+        height: 60%;
+        background: radial-gradient(circle, rgba(108, 142, 245, 0.12) 0%, rgba(0,0,0,0) 70%);
+        z-index: 0;
+        pointer-events: none;
+    }
+    .stApp::after {
+        content: "";
+        position: fixed;
+        bottom: -10%;
+        right: -10%;
+        width: 60%;
+        height: 60%;
+        background: radial-gradient(circle, rgba(167, 139, 250, 0.08) 0%, rgba(0,0,0,0) 70%);
+        z-index: 0;
+        pointer-events: none;
+    }
+    
+    .auth-card {
+        margin-top: 55px;
+        padding: 45px 35px;
+        background: rgba(21, 24, 32, 0.65) !important;
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(108, 142, 245, 0.18) !important;
+        border-radius: 24px !important;
+        box-shadow: 0 25px 60px rgba(0, 0, 0, 0.45), 0 0 50px rgba(108, 142, 245, 0.06) !important;
+        z-index: 1;
+        position: relative;
+    }
+    
+    .auth-logo {
+        width: 76px;
+        height: 76px;
+        border-radius: 22px;
+        background: linear-gradient(135deg, #6c8ef5, #4a6de0);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 36px;
+        margin: 0 auto 24px;
+        box-shadow: 0 8px 24px rgba(108, 142, 245, 0.3);
+    }
+    
+    .auth-title {
+        font-family: 'Lora', serif;
+        text-align: center;
+        font-size: 30px;
+        font-weight: 600;
+        margin-bottom: 10px;
+        color: #eceef5;
+        letter-spacing: -0.01em;
+    }
+    
+    .auth-subtitle {
+        text-align: center;
+        font-size: 13.5px;
+        color: #a0a8c0 !important;
+        margin-bottom: 32px;
+        line-height: 1.5;
+    }
+    
+    /* Text input styling override */
     .stTextInput > div > div > input {
-        background: #151820 !important; border: 1.5px solid #2a3045 !important;
-        border-radius: 12px !important; padding: 14px 16px !important; color: #eceef5 !important;
+        background: rgba(13, 15, 20, 0.75) !important;
+        border: 1.5px solid rgba(108, 142, 245, 0.2) !important;
+        border-radius: 12px !important;
+        padding: 14px 16px !important;
+        color: #eceef5 !important;
+        font-family: 'Outfit', sans-serif !important;
+        font-size: 14.5px !important;
+        transition: all 0.25s ease !important;
     }
+    .stTextInput > div > div > input:focus {
+        border-color: #6c8ef5 !important;
+        box-shadow: 0 0 0 3px rgba(108, 142, 245, 0.22) !important;
+    }
+    .stTextInput label {
+        color: #a0a8c0 !important;
+        font-size: 13px !important;
+        font-weight: 500 !important;
+        margin-bottom: 8px !important;
+    }
+    
+    /* Primary Action Buttons */
     .stButton > button[kind="primary"] {
-        background: linear-gradient(135deg,#6c8ef5,#4a6de0) !important; color: #fff !important;
-        border: none !important; border-radius: 9px !important; font-weight: 600 !important;
+        background: linear-gradient(135deg, #6c8ef5, #4a6de0) !important;
+        color: #fff !important;
+        border: none !important;
+        border-radius: 12px !important;
+        font-weight: 600 !important;
+        font-family: 'Outfit', sans-serif !important;
+        font-size: 14px !important;
+        padding: 12px 24px !important;
+        box-shadow: 0 4px 15px rgba(108, 142, 245, 0.25) !important;
+        transition: all 0.2s ease !important;
+        width: 100% !important;
     }
+    .stButton > button[kind="primary"]:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 20px rgba(108, 142, 245, 0.4) !important;
+    }
+    
+    /* Secondary Action Buttons */
     .stButton > button[kind="secondary"] {
-        background: #151820 !important; color: #a0a8c0 !important;
-        border: 1px solid #2a3045 !important; border-radius: 9px !important;
+        background: rgba(21, 24, 32, 0.55) !important;
+        color: #a0a8c0 !important;
+        border: 1.5px solid rgba(108, 142, 245, 0.15) !important;
+        border-radius: 12px !important;
+        font-family: 'Outfit', sans-serif !important;
+        font-size: 13px !important;
+        font-weight: 500 !important;
+        padding: 10px 20px !important;
+        transition: all 0.2s ease !important;
+        width: 100% !important;
+    }
+    .stButton > button[kind="secondary"]:hover {
+        background: rgba(30, 35, 48, 0.75) !important;
+        color: #eceef5 !important;
+        border-color: rgba(108, 142, 245, 0.28) !important;
     }
     </style>
     """, unsafe_allow_html=True)
     
     col_l1, col_l2, col_l3 = st.columns([1, 1.4, 1])
     with col_l2:
-        st.markdown('<div style="margin-top: 80px; padding: 40px 30px; background: #151820; border: 1px solid #2a3045; border-radius: 18px; box-shadow: 0 8px 32px rgba(0,0,0,0.55);">', unsafe_allow_html=True)
+        st.markdown('<div class="auth-card">', unsafe_allow_html=True)
         
         if st.session_state.auth_view == "login":
-            st.markdown('<h2 style="font-family:\'Lora\', serif; text-align:center; margin-bottom: 24px; color: #eceef5;">🎓 Vidya AI Login</h2>', unsafe_allow_html=True)
+            st.markdown('<div class="auth-logo">🎓</div>', unsafe_allow_html=True)
+            st.markdown('<div class="auth-title">Vidya AI Login</div>', unsafe_allow_html=True)
+            st.markdown('<div class="auth-subtitle">Log in to access your customized academic guide and question bank.</div>', unsafe_allow_html=True)
             login_email = st.text_input("Email", placeholder="you@example.com")
             login_password = st.text_input("Password", type="password", placeholder="••••••••")
             
@@ -166,7 +267,7 @@ if not st.session_state.logged_in:
                     else:
                         st.error(f"Login failed: {err}")
                         
-            st.markdown("<hr style='border-color: #2a3045; margin: 20px 0 !important;'>", unsafe_allow_html=True)
+            st.markdown("<hr style='border-color: rgba(108, 142, 245, 0.15); margin: 24px 0 !important;'>", unsafe_allow_html=True)
             st.markdown('<p style="font-size:13px; text-align:center; color: #a0a8c0;">Don\'t have an account?</p>', unsafe_allow_html=True)
             c_fp1, c_fp2 = st.columns([1, 1], gap="small")
             with c_fp1:
@@ -179,7 +280,9 @@ if not st.session_state.logged_in:
                     st.rerun()
                 
         elif st.session_state.auth_view == "register":
-            st.markdown('<h2 style="font-family:\'Lora\', serif; text-align:center; margin-bottom: 24px; color: #eceef5;">🌱 Create Account</h2>', unsafe_allow_html=True)
+            st.markdown('<div class="auth-logo">🌱</div>', unsafe_allow_html=True)
+            st.markdown('<div class="auth-title">Create Account</div>', unsafe_allow_html=True)
+            st.markdown('<div class="auth-subtitle">Sign up to build your interactive study syllabus.</div>', unsafe_allow_html=True)
             reg_email = st.text_input("Email", placeholder="you@example.com")
             reg_password = st.text_input("Password", type="password", placeholder="••••••••")
             
@@ -195,14 +298,15 @@ if not st.session_state.logged_in:
                 else:
                     st.error(msg)
                     
-            st.markdown("<hr style='border-color: #2a3045; margin: 20px 0 !important;'>", unsafe_allow_html=True)
+            st.markdown("<hr style='border-color: rgba(108, 142, 245, 0.15); margin: 24px 0 !important;'>", unsafe_allow_html=True)
             if st.button("Back to Login", use_container_width=True, type="secondary"):
                 st.session_state.auth_view = "login"
                 st.rerun()
                 
         elif st.session_state.auth_view == "verify":
-            st.markdown('<h2 style="font-family:\'Lora\', serif; text-align:center; margin-bottom: 24px; color: #eceef5;">🔑 Enter Verification Code</h2>', unsafe_allow_html=True)
-            st.markdown(f'<p style="font-size:13px; text-align:center; color: #a0a8c0;">Enter the 6-digit code sent to <strong>{st.session_state.reg_email}</strong></p>', unsafe_allow_html=True)
+            st.markdown('<div class="auth-logo">🔑</div>', unsafe_allow_html=True)
+            st.markdown('<div class="auth-title">Verify Email</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="auth-subtitle">Enter the 6-digit code sent to <strong>{st.session_state.reg_email}</strong></div>', unsafe_allow_html=True)
             
             if "local_otp_fallback" in st.session_state and st.session_state.local_otp_fallback:
                 st.info(f"ℹ️ SMTP not configured. OTP code for testing: **{st.session_state.local_otp_fallback}**")
@@ -227,15 +331,16 @@ if not st.session_state.logged_in:
                 else:
                     st.error(f"Verification failed: {err}")
                     
-            st.markdown("<hr style='border-color: #2a3045; margin: 20px 0 !important;'>", unsafe_allow_html=True)
+            st.markdown("<hr style='border-color: rgba(108, 142, 245, 0.15); margin: 24px 0 !important;'>", unsafe_allow_html=True)
             if st.button("Cancel & Register Again", use_container_width=True, type="secondary"):
                 st.session_state.auth_view = "register"
                 st.session_state.local_otp_fallback = None
                 st.rerun()
-
+ 
         elif st.session_state.auth_view == "forgot_password":
-            st.markdown('<h2 style="font-family:\'Lora\', serif; text-align:center; margin-bottom: 24px; color: #eceef5;">🔑 Reset Password</h2>', unsafe_allow_html=True)
-            st.markdown('<p style="font-size:13px; text-align:center; color: #a0a8c0;">Enter your email to receive a password reset verification code.</p>', unsafe_allow_html=True)
+            st.markdown('<div class="auth-logo">🔑</div>', unsafe_allow_html=True)
+            st.markdown('<div class="auth-title">Reset Password</div>', unsafe_allow_html=True)
+            st.markdown('<div class="auth-subtitle">Enter your registered email address to receive a secure recovery code.</div>', unsafe_allow_html=True)
             reset_email = st.text_input("Email", placeholder="you@example.com")
             
             st.markdown("<div style='height:15px'></div>", unsafe_allow_html=True)
@@ -249,14 +354,15 @@ if not st.session_state.logged_in:
                 else:
                     st.error(msg)
                     
-            st.markdown("<hr style='border-color: #2a3045; margin: 20px 0 !important;'>", unsafe_allow_html=True)
+            st.markdown("<hr style='border-color: rgba(108, 142, 245, 0.15); margin: 24px 0 !important;'>", unsafe_allow_html=True)
             if st.button("Back to Login", use_container_width=True, type="secondary"):
                 st.session_state.auth_view = "login"
                 st.rerun()
-
+ 
         elif st.session_state.auth_view == "verify_reset":
-            st.markdown('<h2 style="font-family:\'Lora\', serif; text-align:center; margin-bottom: 24px; color: #eceef5;">🔒 Enter Reset Details</h2>', unsafe_allow_html=True)
-            st.markdown(f'<p style="font-size:13px; text-align:center; color: #a0a8c0;">Enter the reset code sent to <strong>{st.session_state.reg_email}</strong> and choose a new password.</p>', unsafe_allow_html=True)
+            st.markdown('<div class="auth-logo">🔒</div>', unsafe_allow_html=True)
+            st.markdown('<div class="auth-title">Enter Reset Details</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="auth-subtitle">Verify the recovery OTP sent to <strong>{st.session_state.reg_email}</strong> to set a new password.</div>', unsafe_allow_html=True)
             
             if "local_otp_fallback" in st.session_state and st.session_state.local_otp_fallback:
                 st.info(f"ℹ️ SMTP not configured. OTP code for testing: **{st.session_state.local_otp_fallback}**")
@@ -282,7 +388,7 @@ if not st.session_state.logged_in:
                 else:
                     st.error(msg)
                     
-            st.markdown("<hr style='border-color: #2a3045; margin: 20px 0 !important;'>", unsafe_allow_html=True)
+            st.markdown("<hr style='border-color: rgba(108, 142, 245, 0.15); margin: 24px 0 !important;'>", unsafe_allow_html=True)
             if st.button("Cancel", use_container_width=True, type="secondary"):
                 st.session_state.auth_view = "login"
                 st.session_state.local_otp_fallback = None
