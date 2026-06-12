@@ -1,4 +1,4 @@
-# 🎓 Scholar AI — Smart Subject Guide & Q-Bank Assistant
+# 🎓 Vidya AI (विद्या) — Smart Subject Guide & Q-Bank Assistant
 
 > **Capabl.in · AI Agent Development Project — Milestone Phase**
 >
@@ -30,8 +30,8 @@
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/capabltechies-bit/Subject_Guide_Scholar_AI.git
-cd Subject_Guide_Scholar_AI
+git clone https://github.com/capabltechies-bit/Subject_Guide_Vidya_AI.git
+cd Subject_Guide_Vidya_AI
 ```
 
 ### 2. Create and activate a Virtual Environment
@@ -59,7 +59,7 @@ Open `.env` and fill in your keys (e.g. `GOOGLE_API_KEY`). You can specify multi
 ```bash
 streamlit run app.py
 ```
-Open `http://localhost:8501` to use **Scholar AI**.
+Open `http://localhost:8501` to use **Vidya AI**.
 
 ---
 
@@ -77,7 +77,7 @@ Navigate to the **Settings (⚙️ Settings)** tab in the top navigation bar ins
 ## 🏗️ Project Architecture
 
 ```text
-Subject_Guide_Scholar_AI/
+Subject_Guide_Vidya_AI/
 ├── app.py                  # Streamlit User Interface & Nav Controller
 ├── llm_client.py           # Multi-provider LLM failover & key rotation client
 ├── storage_manager.py      # Abstracted storage layer (Local Files vs. Supabase)
@@ -95,7 +95,7 @@ Subject_Guide_Scholar_AI/
 
 ## 🧬 System Architecture & Pipelines
 
-Scholar AI consists of three interconnected modular pipelines: **Ingestion & Indexing**, **Hybrid Storage Middleware**, and the **Dynamic LLM Failover & Rotation Chain**.
+Vidya AI consists of three interconnected modular pipelines: **Ingestion & Indexing**, **Hybrid Storage Middleware**, and the **Dynamic LLM Failover & Rotation Chain**.
 
 ### 1. Ingestion & Semantic Indexing Pipeline
 ```mermaid

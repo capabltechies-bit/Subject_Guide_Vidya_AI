@@ -11,7 +11,7 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 from vector_store import get_all_chunks_sample
 
-load_dotenv(override=True)
+load_dotenv()
 genai.configure(api_key=os.environ.get("GOOGLE_API_KEY", ""))
 
 _MODEL = "gemini-2.5-flash"

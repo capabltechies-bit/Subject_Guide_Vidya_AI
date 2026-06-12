@@ -13,7 +13,8 @@ import tempfile, os
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv(override=True)
+# Initialize environment variables
+load_dotenv()
 
 import storage_manager as sm
 from vector_store      import get_stats, add_documents
@@ -31,7 +32,7 @@ from progress_tracker  import render_progress_dashboard, record_session
 #  PAGE CONFIG
 # ══════════════════════════════════════════════════════════════════════════════
 st.set_page_config(
-    page_title="Scholar AI",
+    page_title="Vidya AI",
     page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -43,6 +44,7 @@ st.set_page_config(
 DEFAULTS = {
     "logged_in":      False,
     "logged_in_user": None,
+    "use_supabase":   False,         # Toggle local vs cloud mode
     "auth_view":      "login",       # login | register | verify
     "reg_email":      "",
     "reg_password":   "",
@@ -51,7 +53,7 @@ DEFAULTS = {
     "indexed":        False,
     "mode":           "explain",     # explain | exam | synthesize | exam_map
     "level":          "intermediate",# beginner | intermediate | advanced
-    "view":           "dashboard",   # dashboard | chat | upload | learning_path | qbank | knowledge_graph | progress
+    "view":           "chat",        # chat | upload | learning_path | qbank | knowledge_graph | progress
     "subject_filter": None,
     "chapter_filter": None,
     "kg_data":        None,          # cached knowledge graph
@@ -103,561 +105,223 @@ def load_user_session_data(user_id: str):
     if chunks and metadata and faiss_filepath:
         vs.load_user_vector_store(chunks, metadata, faiss_filepath)
         st.session_state.indexed = True
-  # Block access if not logged in
+    else:
+        vs.clear_vector_store()
+        st.session_state.indexed = False
+
+def logout_user():
+    import vector_store as vs
+    vs.clear_vector_store()
+    
+    st.session_state.logged_in = False
+    st.session_state.logged_in_user = None
+    st.session_state.history = []
+    st.session_state.indexed = False
+    st.session_state.kg_data = None
+    st.session_state.lp_result = None
+    st.session_state.qb_result = None
+    st.session_state.progress_data = {
+        "sessions":    [],
+        "quiz_results": [],
+        "streak_days": [],
+    }
+    st.session_state.api_settings = None
+    st.session_state.view = "chat"
+
+# Block access if not logged in
 if not st.session_state.logged_in:
     st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
-    
-    html, body, .stApp {
-        background: #030712 !important;
-        font-family: 'Outfit', sans-serif !important;
-        color: #ffffff;
+    html, body, .stApp { background: #0d0f14 !important; font-family: 'Sora', sans-serif; color: #eceef5; }
+    .stTextInput > div > div > input {
+        background: #151820 !important; border: 1.5px solid #2a3045 !important;
+        border-radius: 12px !important; padding: 14px 16px !important; color: #eceef5 !important;
     }
-    
-    /* Hide default Streamlit elements in auth */
-    #MainMenu, footer, header, [data-testid="stToolbar"] {
-        visibility: hidden !important;
-        height: 0 !important;
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg,#6c8ef5,#4a6de0) !important; color: #fff !important;
+        border: none !important; border-radius: 9px !important; font-weight: 600 !important;
     }
-    
-    /* Remove padding of block container for full screen */
-    .block-container {
-        padding: 0 !important;
-        max-width: 100% !important;
+    .stButton > button[kind="secondary"] {
+        background: #151820 !important; color: #a0a8c0 !important;
+        border: 1px solid #2a3045 !important; border-radius: 9px !important;
     }
-    
-    /* Full-screen splitscreen layout */
-    div[data-testid="stHorizontalBlock"] {
-        min-height: 100vh !important;
-        margin: 0 !important;
-        gap: 0 !important;
-    }
-    
-    /* Left Column (Brand panel container) */
-    div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child {
-        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%) !important;
-        padding: 64px 48px !important;
-        display: flex !important;
-        flex-direction: column !important;
-        justify-content: space-between !important;
-        min-height: 100vh !important;
-        border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
-    }
-    
-    /* Right Column (Form container) */
-    div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child {
-        background-color: #030712 !important;
-        padding: 60px 40px !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        min-height: 100vh !important;
-    }
-    
-    .brand-panel-wrapper {
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        height: 100%;
-        color: #ffffff;
-    }
-    
-    .brand-logo {
-        width: 64px;
-        height: 64px;
-        border-radius: 16px;
-        background: rgba(255, 255, 255, 0.15);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 32px;
-        margin-bottom: 24px;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    }
-    
-    .brand-title {
-        font-size: 32px;
-        font-weight: 700;
-        margin-bottom: 12px;
-        color: #ffffff !important;
-        letter-spacing: -0.02em;
-    }
-    
-    .brand-desc {
-        font-size: 14px;
-        color: rgba(255, 255, 255, 0.7) !important;
-        line-height: 1.6;
-        margin-bottom: 35px;
-    }
-    
-    .brand-features {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-    }
-    
-    .brand-feature {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-size: 14px;
-        color: rgba(255, 255, 255, 0.8) !important;
-        font-weight: 500;
-    }
-    
-    .brand-feature svg {
-        color: rgba(255, 255, 255, 0.9);
-        flex-shrink: 0;
-    }
-    
-    .env-status-card {
-        background: rgba(255, 255, 255, 0.08);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        border-radius: 14px;
-        padding: 16px;
-        margin-top: 32px;
-        font-size: 12px;
-    }
-    
-    .env-status-title {
-        font-weight: 600;
-        color: rgba(255, 255, 255, 0.85);
-        margin-bottom: 8px;
-        font-size: 13px;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-    }
-    
-    .env-status-details {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        color: rgba(255, 255, 255, 0.65) !important;
-    }
-    
-    .env-status-details strong {
-        color: #ffffff;
-    }
-    
-    .brand-copyright {
-        font-size: 12px;
-        color: rgba(255, 255, 255, 0.45);
-        margin-top: 40px;
-    }
-    
-    /* Auth Form Card */
-    .auth-card {
-        width: 100% !important;
-        max-width: 380px !important;
-        margin: auto !important;
-        background: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
-        padding: 0 !important;
-    }
-    
-    /* Left-aligned Headers */
-    .auth-header {
-        margin-bottom: 28px;
-        text-align: left;
-    }
-    
-    .auth-portal-tag {
-        color: #818cf8 !important; /* violet-400 */
-        font-size: 11px !important;
-        font-weight: 600 !important;
-        text-transform: uppercase !important;
-        letter-spacing: 0.1em !important;
-        margin-bottom: 4px !important;
-    }
-    
-    .auth-portal-title {
-        color: #ffffff !important;
-        font-size: 26px !important;
-        font-weight: 700 !important;
-        margin: 0 0 6px 0 !important;
-    }
-    
-    .auth-portal-desc {
-        color: #6b7280 !important; /* gray-500 */
-        font-size: 13.5px !important;
-        line-height: 1.5 !important;
-        margin: 0 !important;
-    }
-    
-    /* Text Input Overrides */
-    div[data-testid="stTextInput"] input {
-        background-color: #111827 !important; /* gray-900 */
-        border: 1.5px solid #374151 !important; /* gray-700 */
-        border-radius: 12px !important;
-        color: #ffffff !important;
-        font-family: 'Outfit', sans-serif !important;
-        font-size: 14.5px !important;
-        padding: 12px 16px !important;
-        height: 44px !important;
-        transition: border-color 0.2s, box-shadow 0.2s !important;
-    }
-    
-    div[data-testid="stTextInput"] input:focus {
-        border-color: #4f46e5 !important;
-        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.25) !important;
-    }
-    
-    div[data-testid="stTextInput"] label {
-        color: #9ca3af !important; /* gray-400 */
-        font-size: 12px !important;
-        font-weight: 500 !important;
-        margin-bottom: 6px !important;
-    }
-    
-    /* Primary buttons */
-    div[data-testid="column"] button[kind="primary"], .stButton > button[kind="primary"] {
-        background: #4f46e5 !important;
-        color: #ffffff !important;
-        border: none !important;
-        border-radius: 12px !important;
-        font-weight: 600 !important;
-        font-family: 'Outfit', sans-serif !important;
-        font-size: 14.5px !important;
-        height: 44px !important;
-        width: 100% !important;
-        transition: background-color 0.2s, transform 0.1s !important;
-        box-shadow: none !important;
-    }
-    
-    div[data-testid="column"] button[kind="primary"]:hover, .stButton > button[kind="primary"]:hover {
-        background: #4338ca !important;
-        transform: translateY(-1px) !important;
-    }
-    
-    /* Secondary buttons */
-    div[data-testid="column"] button[kind="secondary"], .stButton > button[kind="secondary"] {
-        background: rgba(31, 41, 55, 0.4) !important;
-        color: #9ca3af !important;
-        border: 1px solid #374151 !important;
-        border-radius: 12px !important;
-        font-family: 'Outfit', sans-serif !important;
-        font-size: 13.5px !important;
-        font-weight: 500 !important;
-        height: 44px !important;
-        width: 100% !important;
-        transition: color 0.2s, border-color 0.2s, background-color 0.2s !important;
-    }
-    
-    div[data-testid="column"] button[kind="secondary"]:hover, .stButton > button[kind="secondary"]:hover {
-        color: #ffffff !important;
-        border-color: #4b5563 !important;
-        background: rgba(31, 41, 55, 0.7) !important;
-    }
-    
-    /* Custom Alerts */
-    .custom-alert {
-        display: flex;
-        align-items: flex-start;
-        gap: 10px;
-        border-radius: 12px;
-        padding: 12px 16px;
-        margin-bottom: 16px;
-        width: 100%;
-        line-height: 1.4;
-    }
-    .custom-error {
-        background: rgba(69, 10, 10, 0.4) !important;
-        border: 1px solid rgba(220, 38, 38, 0.4) !important;
-        color: #fca5a5 !important;
-    }
-    .custom-success {
-        background: rgba(6, 78, 59, 0.4) !important;
-        border: 1px solid rgba(5, 150, 105, 0.4) !important;
-        color: #6ee7b7 !important;
-    }
-    
-    .auth-fallback-info {
-        background: rgba(30, 41, 59, 0.5) !important;
-        border: 1px solid rgba(96, 165, 250, 0.3) !important;
-        border-radius: 12px !important;
-        padding: 14px 16px !important;
-        margin-bottom: 20px !important;
-        color: #e2e8f0 !important;
-        line-height: 1.4;
-    }
-    
-    /* Responsive rules */
-    @media (max-width: 991px) {
-        div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child {
-            display: none !important;
-        }
-        div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child {
-            flex: 1 1 100% !important;
-            width: 100% !important;
-            min-height: 100vh !important;
-            padding: 40px 24px !important;
-        }
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        background: rgba(21, 24, 32, 0.75) !important;
+        backdrop-filter: blur(14px) !important;
+        border: 1.5px solid rgba(108, 142, 245, 0.15) !important;
+        border-radius: 20px !important;
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5) !important;
+        padding: 35px 30px !important;
     }
     </style>
     """, unsafe_allow_html=True)
     
-    # Active config checkers
-    db_status = "Supabase Cloud" if sm.IS_SUPABASE_ACTIVE else "Local Offline DB"
-    smtp_server = os.environ.get("SMTP_SERVER")
-    smtp_port = os.environ.get("SMTP_PORT")
-    smtp_user = os.environ.get("SMTP_USER")
-    smtp_password = os.environ.get("SMTP_PASSWORD")
-    is_smtp_valid = all([smtp_server, smtp_port, smtp_user, smtp_password]) and smtp_password != "your-gmail-app-password"
-    smtp_status = "Active" if is_smtp_valid else "Pending (Local Fallback)"
-
-    def render_custom_error(msg: str):
-        st.markdown(f"""
-        <div class="custom-alert custom-error">
-            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="margin-top: 2px; flex-shrink: 0;"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></svg>
-            <span>{msg}</span>
-        </div>
-        """, unsafe_allow_html=True)
-
-    def render_custom_success(msg: str):
-        st.markdown(f"""
-        <div class="custom-alert custom-success">
-            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="margin-top: 2px; flex-shrink: 0;"><path stroke-linecap="round" stroke-linejoin="round" d="m5 12 5 5L20 7"/></svg>
-            <span>{msg}</span>
-        </div>
-        """, unsafe_allow_html=True)
-
-    col_l1, col_l2 = st.columns([1, 1.3])
-    with col_l1:
-        st.markdown(f"""
-        <div class="brand-panel-wrapper">
-            <div>
-                <div class="brand-logo">🎓</div>
-                <div class="brand-title">Scholar AI</div>
-                <p class="brand-desc">Your ultimate academic subject guide, dynamic Q-Bank companion, and interactive study mapping tool.</p>
-                <div class="brand-features">
-                    <div class="brand-feature">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 5 5L20 7"/></svg>
-                        <span>Adaptive multi-level explanations</span>
-                    </div>
-                    <div class="brand-feature">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 5 5L20 7"/></svg>
-                        <span>Syllabus-aware Q-Bank generation</span>
-                    </div>
-                    <div class="brand-feature">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 5 5L20 7"/></svg>
-                        <span>Visual connection Knowledge Graphs</span>
-                    </div>
-                    <div class="brand-feature">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 5 5L20 7"/></svg>
-                        <span>Multi-provider free key failovers</span>
-                    </div>
-                </div>
-                
-                <div class="env-status-card">
-                    <div class="env-status-title">
-                        <span>⚙️</span> Active Environment
-                    </div>
-                    <div class="env-status-details">
-                        <div>• Database: <strong>{db_status}</strong></div>
-                        <div>• Mail Server: <strong>{smtp_status}</strong></div>
-                    </div>
-                </div>
-            </div>
-            <p class="brand-copyright">© 2026 Scholar AI Learning Suite</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
+    col_l1, col_l2, col_l3 = st.columns([1, 1.3, 1])
     with col_l2:
-        st.markdown('<div class="auth-card">', unsafe_allow_html=True)
-    
-        if st.session_state.auth_view == "login":
-            st.markdown("""
-            <div class="auth-header">
-                <p class="auth-portal-tag">Scholar AI Portal</p>
-                <h2 class="auth-portal-title">Sign In</h2>
-                <p class="auth-portal-desc">Access your customized academic syllabus and study companions.</p>
-            </div>
-            """, unsafe_allow_html=True)
-            login_email = st.text_input("Email", placeholder="you@example.com")
-            login_password = st.text_input("Password", type="password", placeholder="••••••••")
-        
-            st.markdown("<div style='height:15px'></div>", unsafe_allow_html=True)
-            if st.button("Log In →", use_container_width=True, type="primary"):
-                if not login_email or not login_password:
-                    render_custom_error("Please fill in all fields.")
-                else:
-                    success, uid, err = sm.sign_in(login_email, login_password)
-                    if success:
-                        st.session_state.logged_in = True
-                        st.session_state.logged_in_user = uid
-                        load_user_session_data(uid)
-                        st.rerun()
+        st.markdown("<div style='height: 80px;'></div>", unsafe_allow_html=True)
+        with st.container(border=True):
+            if st.session_state.auth_view == "login":
+                st.markdown('<h2 style="font-family:\'Lora\', serif; text-align:center; margin-bottom: 24px; color: #eceef5;">🎓 Vidya AI Login</h2>', unsafe_allow_html=True)
+                
+                if sm.IS_SUPABASE_CONFIGURED:
+                    mode_options = ["Local Disk Mode (Offline)", "Supabase Cloud Mode"]
+                    selected_mode = st.radio("Storage & Auth Mode", mode_options, index=0, key="login_mode_radio")
+                    st.session_state.use_supabase = (selected_mode == "Supabase Cloud Mode")
+                    st.markdown("<hr style='border-color: rgba(255,255,255,0.05); margin: 12px 0 !important;'>", unsafe_allow_html=True)
+
+                login_email = st.text_input("Email", placeholder="you@example.com")
+                login_password = st.text_input("Password", type="password", placeholder="••••••••")
+                
+                st.markdown("<div style='height:15px'></div>", unsafe_allow_html=True)
+                if st.button("Log In →", use_container_width=True, type="primary"):
+                    if not login_email or not login_password:
+                        st.error("Please fill in all fields.")
                     else:
-                        render_custom_error(f"Login failed: {err}")
+                        success, uid, err = sm.sign_in(login_email, login_password)
+                        if success:
+                            st.session_state.logged_in = True
+                            st.session_state.logged_in_user = uid
+                            load_user_session_data(uid)
+                            st.rerun()
+                        else:
+                            st.error(f"Login failed: {err}")
+                            
+                st.markdown("<hr style='border-color: rgba(255,255,255,0.05); margin: 20px 0 !important;'>", unsafe_allow_html=True)
+                st.markdown('<p style="font-size:12px; text-align:center; color: #a0a8c0;">Manage Account</p>', unsafe_allow_html=True)
+                c_fp1, c_fp2 = st.columns([1, 1], gap="small")
+                with c_fp1:
+                    if st.button("Create Account", use_container_width=True, type="secondary"):
+                        st.session_state.auth_view = "register"
+                        st.rerun()
+                with c_fp2:
+                    if st.button("Forgot Password?", use_container_width=True, type="secondary"):
+                        st.session_state.auth_view = "forgot_password"
+                        st.rerun()
                     
-            st.markdown("<hr style='border-color: rgba(108, 142, 245, 0.15); margin: 24px 0 !important;'>", unsafe_allow_html=True)
-            c_fp1, c_fp2 = st.columns([1, 1], gap="small")
-            with c_fp1:
-                if st.button("Create Account", use_container_width=True, type="secondary"):
+            elif st.session_state.auth_view == "register":
+                st.markdown('<h2 style="font-family:\'Lora\', serif; text-align:center; margin-bottom: 24px; color: #eceef5;">🌱 Create Account</h2>', unsafe_allow_html=True)
+                
+                if sm.IS_SUPABASE_CONFIGURED:
+                    mode_options = ["Local Disk Mode (Offline)", "Supabase Cloud Mode"]
+                    selected_mode = st.radio("Storage & Auth Mode", mode_options, index=0, key="register_mode_radio")
+                    st.session_state.use_supabase = (selected_mode == "Supabase Cloud Mode")
+                    st.markdown("<hr style='border-color: rgba(255,255,255,0.05); margin: 12px 0 !important;'>", unsafe_allow_html=True)
+
+                reg_email = st.text_input("Email", placeholder="you@example.com")
+                reg_password = st.text_input("Password", type="password", placeholder="••••••••")
+                
+                st.markdown("<div style='height:15px'></div>", unsafe_allow_html=True)
+                if st.button("Send Verification Code →", use_container_width=True, type="primary"):
+                    success, msg = sm.start_sign_up(reg_email, reg_password)
+                    if success:
+                        st.session_state.reg_email = reg_email
+                        st.session_state.reg_password = reg_password
+                        st.session_state.auth_view = "verify"
+                        st.success(msg)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+                        
+                st.markdown("<hr style='border-color: rgba(255,255,255,0.05); margin: 20px 0 !important;'>", unsafe_allow_html=True)
+                if st.button("Back to Login", use_container_width=True, type="secondary"):
+                    st.session_state.auth_view = "login"
+                    st.rerun()
+                    
+            elif st.session_state.auth_view == "verify":
+                st.markdown('<h2 style="font-family:\'Lora\', serif; text-align:center; margin-bottom: 24px; color: #eceef5;">🔑 Enter Verification Code</h2>', unsafe_allow_html=True)
+                st.markdown(f'<p style="font-size:13px; text-align:center; color: #a0a8c0;">Enter the 6-digit code sent to <strong>{st.session_state.reg_email}</strong></p>', unsafe_allow_html=True)
+                
+                if "local_otp_fallback" in st.session_state and st.session_state.local_otp_fallback:
+                    st.info(f"ℹ️ Code for testing: **{st.session_state.local_otp_fallback}**")
+                    
+                verification_code = st.text_input("6-digit Code", placeholder="123456")
+                
+                st.markdown("<div style='height:15px'></div>", unsafe_allow_html=True)
+                if st.button("Verify & Create Account", use_container_width=True, type="primary"):
+                    success, uid, err = sm.verify_signup_otp(st.session_state.reg_email, verification_code)
+                    if success:
+                        st.success("Account created successfully!")
+                        login_success, login_uid, login_err = sm.sign_in(st.session_state.reg_email, st.session_state.reg_password)
+                        if login_success:
+                            st.session_state.logged_in = True
+                            st.session_state.logged_in_user = login_uid
+                            st.session_state.local_otp_fallback = None
+                            load_user_session_data(login_uid)
+                            st.rerun()
+                        else:
+                            st.session_state.auth_view = "login"
+                            st.rerun()
+                    else:
+                        st.error(f"Verification failed: {err}")
+                        
+                st.markdown("<hr style='border-color: rgba(255,255,255,0.05); margin: 20px 0 !important;'>", unsafe_allow_html=True)
+                if st.button("Cancel & Register Again", use_container_width=True, type="secondary"):
                     st.session_state.auth_view = "register"
+                    st.session_state.local_otp_fallback = None
                     st.rerun()
-            with c_fp2:
-                if st.button("Forgot Password?", use_container_width=True, type="secondary"):
-                    st.session_state.auth_view = "forgot_password"
-                    st.rerun()
-            
-        elif st.session_state.auth_view == "register":
-            st.markdown("""
-            <div class="auth-header">
-                <p class="auth-portal-tag">Scholar AI Portal</p>
-                <h2 class="auth-portal-title">Create Account</h2>
-                <p class="auth-portal-desc">Sign up to build your interactive syllabus and study guides.</p>
-            </div>
-            """, unsafe_allow_html=True)
-            reg_email = st.text_input("Email", placeholder="you@example.com")
-            reg_password = st.text_input("Password", type="password", placeholder="••••••••")
         
-            st.markdown("<div style='height:15px'></div>", unsafe_allow_html=True)
-            if st.button("Send Verification Code →", use_container_width=True, type="primary"):
-                success, msg = sm.start_sign_up(reg_email, reg_password)
-                if success:
-                    st.session_state.reg_email = reg_email
-                    st.session_state.reg_password = reg_password
-                    st.session_state.auth_view = "verify"
-                    st.rerun()
-                else:
-                    render_custom_error(msg)
+            elif st.session_state.auth_view == "forgot_password":
+                st.markdown('<h2 style="font-family:\'Lora\', serif; text-align:center; margin-bottom: 24px; color: #eceef5;">🔑 Reset Password</h2>', unsafe_allow_html=True)
                 
-            st.markdown("<hr style='border-color: rgba(108, 142, 245, 0.15); margin: 24px 0 !important;'>", unsafe_allow_html=True)
-            if st.button("Back to Login", use_container_width=True, type="secondary"):
-                st.session_state.auth_view = "login"
-                st.rerun()
-            
-        elif st.session_state.auth_view == "verify":
-            st.markdown(f"""
-            <div class="auth-header">
-                <p class="auth-portal-tag">Verification Required</p>
-                <h2 class="auth-portal-title">Verify Email</h2>
-                <p class="auth-portal-desc">Enter the 6-digit verification code sent to <strong>{st.session_state.reg_email}</strong></p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-            if "local_otp_fallback" in st.session_state and st.session_state.local_otp_fallback:
-                st.markdown(f"""
-                <div class="auth-fallback-info">
-                    <div style="display: flex; gap: 8px; align-items: flex-start;">
-                        <span style="font-size: 16px;">ℹ️</span>
-                        <div>
-                            <strong style="color: #60a5fa; font-weight: 600;">SMTP not configured</strong>
-                            <div style="font-size: 12px; color: #9ca3af; margin-top: 4px;">
-                                OTP code for testing: <strong style="color: #ffffff; font-size: 13px; font-family: monospace; background: rgba(255,255,255,0.15); padding: 2px 6px; border-radius: 4px;">{st.session_state.local_otp_fallback}</strong>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            verification_code = st.text_input("6-digit Code", placeholder="123456")
-        
-            st.markdown("<div style='height:15px'></div>", unsafe_allow_html=True)
-            if st.button("Verify & Create Account", use_container_width=True, type="primary"):
-                success, uid, err = sm.verify_signup_otp(st.session_state.reg_email, verification_code)
-                if success:
-                    login_success, login_uid, login_err = sm.sign_in(st.session_state.reg_email, st.session_state.reg_password)
-                    if login_success:
-                        st.session_state.logged_in = True
-                        st.session_state.logged_in_user = login_uid
-                        st.session_state.local_otp_fallback = None
-                        load_user_session_data(login_uid)
+                if sm.IS_SUPABASE_CONFIGURED:
+                    mode_options = ["Local Disk Mode (Offline)", "Supabase Cloud Mode"]
+                    selected_mode = st.radio("Storage & Auth Mode", mode_options, index=0, key="forgot_mode_radio")
+                    st.session_state.use_supabase = (selected_mode == "Supabase Cloud Mode")
+                    st.markdown("<hr style='border-color: rgba(255,255,255,0.05); margin: 12px 0 !important;'>", unsafe_allow_html=True)
+
+                st.markdown('<p style="font-size:13px; text-align:center; color: #a0a8c0;">Enter your email to receive a password reset verification code.</p>', unsafe_allow_html=True)
+                reset_email = st.text_input("Email", placeholder="you@example.com")
+                
+                st.markdown("<div style='height:15px'></div>", unsafe_allow_html=True)
+                if st.button("Send Reset Code →", use_container_width=True, type="primary"):
+                    success, msg = sm.start_password_reset(reset_email)
+                    if success:
+                        st.session_state.reg_email = reset_email
+                        st.session_state.auth_view = "verify_reset"
+                        st.success(msg)
                         st.rerun()
                     else:
-                        st.session_state.auth_view = "login"
-                        st.rerun()
-                else:
-                    render_custom_error(f"Verification failed: {err}")
-                
-            st.markdown("<hr style='border-color: rgba(108, 142, 245, 0.15); margin: 24px 0 !important;'>", unsafe_allow_html=True)
-            if st.button("Cancel & Register Again", use_container_width=True, type="secondary"):
-                st.session_state.auth_view = "register"
-                st.session_state.local_otp_fallback = None
-                st.rerun()
- 
-        elif st.session_state.auth_view == "forgot_password":
-            st.markdown("""
-            <div class="auth-header">
-                <p class="auth-portal-tag">Recover Password</p>
-                <h2 class="auth-portal-title">Reset Password</h2>
-                <p class="auth-portal-desc">Enter your registered email address to receive a secure recovery code.</p>
-            </div>
-            """, unsafe_allow_html=True)
-            reset_email = st.text_input("Email", placeholder="you@example.com")
-        
-            st.markdown("<div style='height:15px'></div>", unsafe_allow_html=True)
-            if st.button("Send Reset Code →", use_container_width=True, type="primary"):
-                success, msg = sm.start_password_reset(reset_email)
-                if success:
-                    st.session_state.reg_email = reset_email
-                    st.session_state.auth_view = "verify_reset"
+                        st.error(msg)
+                        
+                st.markdown("<hr style='border-color: rgba(255,255,255,0.05); margin: 20px 0 !important;'>", unsafe_allow_html=True)
+                if st.button("Back to Login", use_container_width=True, type="secondary"):
+                    st.session_state.auth_view = "login"
                     st.rerun()
-                else:
-                    render_custom_error(msg)
+        
+            elif st.session_state.auth_view == "verify_reset":
+                st.markdown('<h2 style="font-family:\'Lora\', serif; text-align:center; margin-bottom: 24px; color: #eceef5;">🔒 Enter Reset Details</h2>', unsafe_allow_html=True)
+                st.markdown(f'<p style="font-size:13px; text-align:center; color: #a0a8c0;">Enter the reset code sent to <strong>{st.session_state.reg_email}</strong> and choose a new password.</p>', unsafe_allow_html=True)
                 
-            st.markdown("<hr style='border-color: rgba(108, 142, 245, 0.15); margin: 24px 0 !important;'>", unsafe_allow_html=True)
-            if st.button("Back to Login", use_container_width=True, type="secondary"):
-                st.session_state.auth_view = "login"
-                st.rerun()
- 
-        elif st.session_state.auth_view == "verify_reset":
-            st.markdown(f"""
-            <div class="auth-header">
-                <p class="auth-portal-tag">Reset Code Verification</p>
-                <h2 class="auth-portal-title">Enter Reset Details</h2>
-                <p class="auth-portal-desc">Verify recovery OTP sent to <strong>{st.session_state.reg_email}</strong> to set a new password.</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-            if "local_otp_fallback" in st.session_state and st.session_state.local_otp_fallback:
-                st.markdown(f"""
-                <div class="auth-fallback-info">
-                    <div style="display: flex; gap: 8px; align-items: flex-start;">
-                        <span style="font-size: 16px;">ℹ️</span>
-                        <div>
-                            <strong style="color: #60a5fa; font-weight: 600;">SMTP not configured</strong>
-                            <div style="font-size: 12px; color: #9ca3af; margin-top: 4px;">
-                                OTP code for testing: <strong style="color: #ffffff; font-size: 13px; font-family: monospace; background: rgba(255,255,255,0.15); padding: 2px 6px; border-radius: 4px;">{st.session_state.local_otp_fallback}</strong>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            reset_code = st.text_input("Reset Code", placeholder="123456")
-            new_password = st.text_input("New Password", type="password", placeholder="••••••••")
-        
-            st.markdown("<div style='height:15px'></div>", unsafe_allow_html=True)
-            if st.button("Update Password & Log In →", use_container_width=True, type="primary"):
-                success, msg = sm.complete_password_reset(st.session_state.reg_email, reset_code, new_password)
-                if success:
-                    login_success, login_uid, login_err = sm.sign_in(st.session_state.reg_email, new_password)
-                    if login_success:
-                        st.session_state.logged_in = True
-                        st.session_state.logged_in_user = login_uid
-                        st.session_state.local_otp_fallback = None
-                        load_user_session_data(login_uid)
-                        st.rerun()
+                if "local_otp_fallback" in st.session_state and st.session_state.local_otp_fallback:
+                    st.info(f"ℹ️ SMTP not configured. OTP code for testing: **{st.session_state.local_otp_fallback}**")
+                    
+                reset_code = st.text_input("Reset Code", placeholder="123456")
+                new_password = st.text_input("New Password", type="password", placeholder="••••••••")
+                
+                st.markdown("<div style='height:15px'></div>", unsafe_allow_html=True)
+                if st.button("Update Password & Log In →", use_container_width=True, type="primary"):
+                    success, msg = sm.complete_password_reset(st.session_state.reg_email, reset_code, new_password)
+                    if success:
+                        st.success(msg)
+                        login_success, login_uid, login_err = sm.sign_in(st.session_state.reg_email, new_password)
+                        if login_success:
+                            st.session_state.logged_in = True
+                            st.session_state.logged_in_user = login_uid
+                            st.session_state.local_otp_fallback = None
+                            load_user_session_data(login_uid)
+                            st.rerun()
+                        else:
+                            st.session_state.auth_view = "login"
+                            st.rerun()
                     else:
-                        st.session_state.auth_view = "login"
-                        st.rerun()
-                else:
-                    render_custom_error(msg)
-                
-            st.markdown("<hr style='border-color: rgba(108, 142, 245, 0.15); margin: 24px 0 !important;'>", unsafe_allow_html=True)
-            if st.button("Cancel", use_container_width=True, type="secondary"):
-                st.session_state.auth_view = "login"
-                st.session_state.local_otp_fallback = None
-                st.rerun()
-            
-        st.markdown('</div>', unsafe_allow_html=True)
-st.stop()
+                        st.error(msg)
+                        
+                st.markdown("<hr style='border-color: #2a3045; margin: 20px 0 !important;'>", unsafe_allow_html=True)
+                if st.button("Cancel", use_container_width=True, type="secondary"):
+                    st.session_state.auth_view = "login"
+                    st.session_state.local_otp_fallback = None
+                    st.rerun()
+    st.stop()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -665,42 +329,185 @@ st.stop()
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,600;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,600;1,400&family=Outfit:wght@300;400;500;600;700&display=swap');
 
 :root {
-  --bg:         #0d0f14;
-  --surface:    #151820;
-  --surface2:   #1c2030;
-  --surface3:   #222840;
-  --border:     #2a3045;
-  --border2:    #333d58;
-  --text:       #eceef5;
-  --text2:      #a0a8c0;
-  --text3:      #606880;
-  --text-inv:   #0d0f14;
+  --bg:         #08090c;
+  --surface:    #0f121d;
+  --surface2:   #151928;
+  --surface3:   #1d2238;
+  --border:     #212840;
+  --border2:    #2a3352;
+  --text:       #f1f3f9;
+  --text2:      #a5b1cf;
+  --text3:      #68769f;
+  --text-inv:   #08090c;
   --accent:     #6c8ef5;
   --accent2:    #4a6de0;
-  --accent-lt:  rgba(108,142,245,.14);
-  --accent-glow:rgba(108,142,245,.25);
-  --gold:       #f0b84a;
-  --gold-lt:    rgba(240,184,74,.13);
-  --sage:       #4ecb8d;
-  --sage-lt:    rgba(78,203,141,.13);
-  --rose:       #f07070;
-  --rose-lt:    rgba(240,112,112,.12);
-  --purple:     #a78bfa;
-  --purple-lt:  rgba(167,139,250,.13);
-  --cyan:       #38bdf8;
-  --cyan-lt:    rgba(56,189,248,.13);
-  --r:    11px;
-  --r-lg: 18px;
-  --sh:   0 2px 8px rgba(0,0,0,.4);
-  --sh-lg:0 8px 32px rgba(0,0,0,.55);
+  --accent-lt:  rgba(108,142,245,.12);
+  --accent-glow:rgba(108,142,245,.2);
+  --gold:       #f5be4f;
+  --gold-lt:    rgba(245,190,79,.1);
+  --sage:       #50d890;
+  --sage-lt:    rgba(80,216,144,.1);
+  --rose:       #f37676;
+  --rose-lt:    rgba(243,118,118,.1);
+  --purple:     #af95fc;
+  --purple-lt:  rgba(175,149,252,.1);
+  --cyan:       #3ec8fc;
+  --cyan-lt:    rgba(62,200,252,.1);
+  --r:    12px;
+  --r-lg: 20px;
+  --sh:   0 4px 12px rgba(0,0,0,.5);
+  --sh-lg:0 12px 40px rgba(0,0,0,.7);
 }
 *, *::before, *::after { box-sizing: border-box; }
-html, body, .stApp { background: var(--bg) !important; font-family: 'Sora', sans-serif; color: var(--text); }
+html, body, .stApp { 
+  background: radial-gradient(circle at top right, #171d30, #08090c 80%) !important; 
+  font-family: 'Sora', 'Outfit', sans-serif; 
+  color: var(--text); 
+}
 #MainMenu, footer, header, [data-testid="stToolbar"] { visibility:hidden; height:0; }
-.block-container { padding:0 !important; max-width:100% !important; }
+.block-container { padding: 20px 40px 100px !important; max-width:100% !important; }
+
+/* ── Premium Custom Scrollbar ── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0,0,0,0.2) !important;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border) !important;
+  border-radius: 6px !important;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent) !important;
+}
+
+/* ── Profile Card Styling ── */
+.profile-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 14px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin: 12px 14px 4px;
+  box-shadow: var(--sh);
+}
+.profile-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  box-shadow: 0 4px 10px var(--accent-glow);
+  flex-shrink: 0;
+}
+.profile-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.profile-email {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+.profile-status {
+  font-size: 10px;
+  color: var(--sage);
+  font-weight: 500;
+  margin-top: 1px;
+}
+
+/* ── Sidebar Navigation Customizing ── */
+div[data-testid="stSidebar"] div.stButton > button {
+  width: 100% !important;
+  text-align: left !important;
+  justify-content: flex-start !important;
+  display: flex !important;
+  align-items: center !important;
+  padding: 10px 14px !important;
+  border-radius: 10px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  border: 1px solid transparent !important;
+  transition: all 0.2s ease !important;
+  margin-bottom: 2px !important;
+}
+div[data-testid="stSidebar"] div.stButton > button[kind="primary"] {
+  background: linear-gradient(90deg, var(--accent-lt), rgba(108,142,245,0.02)) !important;
+  color: var(--accent) !important;
+  border: 1px solid rgba(108,142,245,0.2) !important;
+  border-left: 4px solid var(--accent) !important;
+  font-weight: 600 !important;
+}
+div[data-testid="stSidebar"] div.stButton > button[kind="secondary"] {
+  background: transparent !important;
+  color: var(--text2) !important;
+}
+div[data-testid="stSidebar"] div.stButton > button[kind="secondary"]:hover {
+  background: rgba(255,255,255,0.04) !important;
+  color: var(--text) !important;
+  border: 1px solid rgba(255,255,255,0.05) !important;
+}
+
+/* ── Sidebar General Structure ── */
+section[data-testid="stSidebar"] > div:first-child { 
+  background: var(--surface) !important; 
+  border-right: 1px solid var(--border) !important; 
+  padding: 0 !important; 
+}
+section[data-testid="stSidebar"] p, section[data-testid="stSidebar"] span,
+section[data-testid="stSidebar"] label, section[data-testid="stSidebar"] div { 
+  color: var(--text2) !important; 
+}
+section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3 { 
+  color: var(--text) !important; 
+}
+
+/* ── Collapsible Expanders for Filters & Files ── */
+[data-testid="stSidebar"] [data-testid="stExpander"] {
+  background: rgba(255,255,255,0.01) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 10px !important;
+  margin: 4px 14px 8px !important;
+  box-shadow: none !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary {
+  padding: 8px 12px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: var(--text3) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ── Glassmorphism for bordered containers ── */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+  background: rgba(15, 18, 29, 0.7) !important;
+  backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(108, 142, 245, 0.12) !important;
+  border-radius: 16px !important;
+  box-shadow: var(--sh-lg) !important;
+  padding: 30px 25px !important;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:hover {
+  border-color: rgba(108, 142, 245, 0.25) !important;
+  box-shadow: 0 16px 48px rgba(108, 142, 245, 0.08) !important;
+}
 
 /* ── Force all Streamlit text visible ── */
 .stApp p, .stApp span, .stApp label, .stApp div, .stApp li, .stApp small,
@@ -758,324 +565,18 @@ hr { border-color: var(--border) !important; margin: 20px 0 !important; }
 [data-testid="stMetricLabel"] p { color: var(--text3) !important; font-size:11px !important; text-transform:uppercase; letter-spacing:.07em; }
 [data-testid="stMetricValue"]   { color: var(--text) !important; font-size:28px !important; font-weight:700 !important; }
 
-/* ══════════ SIDEBAR ══════════ */
-section[data-testid="stSidebar"] > div:first-child {
-    background: #0b0f19 !important;
-    border-right: 1px solid #1f2937 !important;
-    padding: 0 !important;
-}
-
-section[data-testid="stSidebar"] p, section[data-testid="stSidebar"] span,
-section[data-testid="stSidebar"] label, section[data-testid="stSidebar"] div {
-    color: #9ca3af !important;
-}
-
-section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2,
-section[data-testid="stSidebar"] h3 {
-    color: #ffffff !important;
-}
-
-/* Sidebar primary navigation buttons */
-section[data-testid="stSidebar"] button[kind="primary"] {
-    background: #4f46e5 !important;
-    color: #ffffff !important;
-    border: none !important;
-    border-radius: 12px !important;
-    font-weight: 600 !important;
-    font-family: 'Outfit', sans-serif !important;
-    font-size: 14.5px !important;
-    height: 44px !important;
-    margin-bottom: 6px !important;
-    box-shadow: none !important;
-    width: 100% !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: flex-start !important;
-    padding-left: 20px !important;
-}
-section[data-testid="stSidebar"] button[kind="primary"]:hover {
-    background: #4338ca !important;
-}
-
-/* Sidebar secondary navigation buttons */
-section[data-testid="stSidebar"] button[kind="secondary"] {
-    background: rgba(31, 41, 55, 0.4) !important;
-    color: #9ca3af !important;
-    border: 1px solid #374151 !important;
-    border-radius: 12px !important;
-    font-weight: 500 !important;
-    font-family: 'Outfit', sans-serif !important;
-    font-size: 13.5px !important;
-    height: 44px !important;
-    margin-bottom: 6px !important;
-    width: 100% !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: flex-start !important;
-    padding-left: 20px !important;
-}
-section[data-testid="stSidebar"] button[kind="secondary"]:hover {
-    color: #ffffff !important;
-    border-color: #4b5563 !important;
-    background: rgba(31, 41, 55, 0.7) !important;
-}
-
-/* Danger actions wrapper */
-.sb-danger-btn button {
-    background: rgba(240, 112, 112, 0.12) !important;
-    color: #f07070 !important;
-    border: 1px solid rgba(240, 112, 112, 0.25) !important;
-    border-radius: 12px !important;
-    font-weight: 600 !important;
-    height: 44px !important;
-    margin-bottom: 8px !important;
-    width: 100% !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: flex-start !important;
-    padding-left: 20px !important;
-}
-.sb-danger-btn button:hover {
-    background: rgba(240, 112, 112, 0.22) !important;
-    color: #ff8585 !important;
-}
-
-/* ══════════ CUSTOM COMPONENTS ══════════ */
-.sb-logo-container {
-    padding: 24px 20px 16px;
-    border-bottom: 1px solid #1f2937;
-    margin-bottom: 12px;
-}
-.sb-logo-tag {
-    color: #818cf8 !important;
-    font-size: 11px !important;
-    font-weight: 700 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.12em !important;
-    margin: 0 !important;
-}
-.sb-logo-title {
-    color: #ffffff !important;
-    font-size: 20px !important;
-    font-weight: 700 !important;
-    margin: 2px 0 0 0 !important;
-}
-
-.sb-profile-container {
-    padding: 12px 20px 16px;
-    border-bottom: 1px solid #1f2937;
-    margin-bottom: 16px;
-}
-.sb-profile-avatar {
-    width: 38px;
-    height: 38px;
-    border-radius: 50%;
-    background: #4f46e5;
-    color: #ffffff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 15px;
-    font-weight: 700;
-    flex-shrink: 0;
-}
-.sb-profile-name {
-    color: #ffffff !important;
-    font-size: 13.5px !important;
-    font-weight: 600 !important;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.sb-profile-role {
-    color: #9ca3af !important;
-    font-size: 11.5px !important;
-    margin-top: 2px !important;
-}
-
-.sb-stats { display:flex; gap:8px; margin:0 20px 16px; }
-.sb-stat { flex:1; background:#111827; border:1px solid #1f2937; border-radius:10px; padding:12px 10px; text-align:center; }
-.sb-stat-n { font-size:24px; font-weight:700; color:#ffffff !important; line-height:1; }
-.sb-stat-l { font-size:9px; font-weight:600; color:#6b7280 !important; text-transform:uppercase; letter-spacing:.08em; margin-top:4px; }
-
-.status-pill { display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:99px; font-size:11px; font-weight:600; margin:0 20px 16px; }
-.status-on  { background:rgba(78,203,141,.13);  color:#4ecb8d  !important; border:1px solid rgba(78,203,141,.3); }
-.status-off { background:rgba(240,184,74,.13);  color:#f0b84a  !important; border:1px solid rgba(240,184,74,.3); }
+.status-pill { display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:99px; font-size:11px; font-weight:600; margin:14px 20px 0; }
+.status-on  { background:var(--sage-lt);  color:var(--sage)  !important; border:1px solid rgba(78,203,141,.3); }
+.status-off { background:var(--gold-lt);  color:var(--gold)  !important; border:1px solid rgba(240,184,74,.3); }
 .status-dot { width:6px; height:6px; border-radius:50%; background:currentColor; }
 
-.sb-sec { font-size:10px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#6b7280 !important; padding:12px 20px 6px; display:block; }
-.sb-files { padding:0 8px; }
-.sb-file-row { display:flex; align-items:center; gap:9px; padding:8px 8px; border-radius:8px; font-size:12px; color:#9ca3af !important; transition:background .12s; margin-bottom:2px; }
-.sb-file-row:hover { background:#111827; }
+.sb-sec { font-size:10px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--text3) !important; padding:18px 20px 8px; display:block; }
+.sb-files { padding:0 12px; }
+.sb-file-row { display:flex; align-items:center; gap:9px; padding:8px 8px; border-radius:8px; font-size:12px; color:var(--text2) !important; transition:background .12s; margin-bottom:2px; }
+.sb-file-row:hover { background:var(--surface2); }
 .sb-file-icon { width:28px; height:28px; border-radius:7px; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
-.fi-pdf { background:rgba(240,112,112,.15); } .fi-docx { background:rgba(108,142,245,.14); } .fi-pptx { background:rgba(240,184,74,.13); } .fi-txt { background:rgba(78,203,141,.13); } .fi-gen { background:#1f2937; }
-.sb-file-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; color:#9ca3af !important; }
-
-/* ── Layout Header ── */
-.dash-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 20px 32px !important;
-    background: #090b0e !important;
-    border-bottom: 1px solid #1f2937 !important;
-    margin-bottom: 32px !important;
-}
-.dash-header-tag {
-    color: #818cf8 !important; /* violet-400 */
-    font-size: 11px !important;
-    font-weight: 600 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.1em !important;
-}
-.dash-header-title {
-    font-family: 'Outfit', sans-serif !important;
-    color: #ffffff !important;
-    font-size: 24px !important;
-    font-weight: 700 !important;
-    margin: 4px 0 0 0 !important;
-}
-
-/* ── Dashboard Welcome Banner ── */
-.welcome-banner {
-    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%) !important;
-    padding: 28px !important;
-    border-radius: 16px !important;
-    color: #ffffff !important;
-    margin-bottom: 24px !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    box-shadow: 0 10px 25px rgba(79, 70, 229, 0.15) !important;
-}
-.welcome-banner-tag {
-    color: rgba(255, 255, 255, 0.7) !important;
-    font-size: 11px !important;
-    font-weight: 600 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.05em !important;
-}
-.welcome-banner-name {
-    font-size: 26px !important;
-    font-weight: 700 !important;
-    margin: 4px 0 !important;
-}
-.welcome-banner-desc {
-    color: rgba(255, 255, 255, 0.8) !important;
-    font-size: 13.5px !important;
-    margin: 0 !important;
-}
-
-/* ── Dashboard Stats Cards ── */
-.dashboard-stats-grid {
-    display: grid !important;
-    grid-template-columns: repeat(4, 1fr) !important;
-    gap: 18px !important;
-    margin-bottom: 32px !important;
-}
-@media (max-width: 1200px) {
-    .dashboard-stats-grid {
-        grid-template-columns: repeat(2, 1fr) !important;
-    }
-}
-@media (max-width: 600px) {
-    .dashboard-stats-grid {
-        grid-template-columns: 1fr !important;
-    }
-}
-.dashboard-stat-card {
-    background: #0f172a !important; /* slate-900 */
-    border: 1px solid #1f2937 !important;
-    border-radius: 14px !important;
-    padding: 20px !important;
-    display: flex !important;
-    align-items: center !important;
-    gap: 16px !important;
-    transition: transform 0.2s, border-color 0.2s !important;
-}
-.dashboard-stat-card:hover {
-    border-color: #4f46e5 !important;
-    transform: translateY(-2px) !important;
-}
-.dashboard-stat-icon-wrapper {
-    width: 44px !important;
-    height: 44px !important;
-    border-radius: 10px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    font-size: 20px !important;
-}
-.dashboard-stat-label {
-    color: #9ca3af !important;
-    font-size: 11px !important;
-    font-weight: 600 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.05em !important;
-}
-.dashboard-stat-value {
-    color: #ffffff !important;
-    font-size: 22px !important;
-    font-weight: 700 !important;
-    margin-top: 2px !important;
-    line-height: 1 !important;
-}
-
-/* ── Dashboard Bottom Sections ── */
-.dashboard-section-card {
-    background: #0b0f19 !important;
-    border: 1px solid #1f2937 !important;
-    border-radius: 16px !important;
-    padding: 24px !important;
-    min-height: 380px !important;
-    display: flex !important;
-    flex-direction: column !important;
-}
-.dashboard-section-title {
-    color: #ffffff !important;
-    font-size: 16px !important;
-    font-weight: 700 !important;
-    margin: 0 0 16px 0 !important;
-    display: flex !important;
-    align-items: center !important;
-    gap: 8px !important;
-}
-
-/* ── Dashboard Quick Chat Widget ── */
-.quick-chat-container {
-    display: flex !important;
-    flex-direction: column !important;
-    flex-grow: 1 !important;
-    justify-content: space-between !important;
-}
-.quick-chat-history {
-    flex-grow: 1 !important;
-    overflow-y: auto !important;
-    max-height: 200px !important;
-    margin-bottom: 14px !important;
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 8px !important;
-    padding-right: 6px !important;
-}
-.quick-chat-bubble {
-    padding: 10px 14px !important;
-    border-radius: 12px !important;
-    font-size: 13px !important;
-    line-height: 1.5 !important;
-    max-width: 90% !important;
-}
-.quick-chat-bubble-user {
-    background: #4f46e5 !important;
-    color: #ffffff !important;
-    align-self: flex-end !important;
-    border-bottom-right-radius: 4px !important;
-}
-.quick-chat-bubble-ai {
-    background: #1e293b !important;
-    color: #ffffff !important;
-    border: 1px solid #334155 !important;
-    align-self: flex-start !important;
-    border-bottom-left-radius: 4px !important;
-}
+.fi-pdf { background:rgba(240,112,112,.15); } .fi-docx { background:var(--accent-lt); } .fi-pptx { background:var(--gold-lt); } .fi-txt { background:var(--sage-lt); } .fi-gen { background:var(--surface3); }
+.sb-file-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; color:var(--text2) !important; }
 
 /* ── Nav/mode buttons ── */
 .stButton > button[kind="primary"] { background: linear-gradient(135deg,var(--accent),var(--accent2)) !important; color: #fff !important; border: none !important; border-radius: 9px !important; font-family: 'Sora', sans-serif !important; font-size: 12px !important; font-weight: 600 !important; padding: 8px 12px !important; box-shadow: 0 2px 8px var(--accent-glow) !important; transition: opacity .15s, transform .1s !important; }
@@ -1186,381 +687,113 @@ LEVEL_META = {
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SIDEBAR
+#  SIDEBAR (Google Drive Layout Flow)
 # ══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
+    # Header logo
     st.markdown("""
-    <div class="sb-logo-container">
-      <p class="sb-logo-tag">Scholar AI</p>
-      <h2 class="sb-logo-title">Learning Suite</h2>
+    <div class="sb-logo" style="padding: 16px 14px 10px; border-bottom: none;">
+      <span class="sb-logo-icon">🎓</span>
+      <span class="sb-logo-text" style="font-family:'Outfit',sans-serif;font-size:18px;font-weight:700;color:var(--text);">Vidya AI</span>
+      <span class="sb-logo-beta" style="font-size:9px;font-weight:700;color:var(--accent);background:var(--accent-lt);border-radius:4px;padding:2px 6px;margin-left:6px;">PRO</span>
     </div>
     """, unsafe_allow_html=True)
 
-    user_email = st.session_state.logged_in_user or "user@example.com"
-    username = user_email.split('@')[0].upper()
-    initials = user_email[0].upper() if user_email else "?"
-    role_label = "Admin" if "admin" in user_email.lower() else "Student"
-    
+    stats = get_stats()
+
+    # User profile at left top
+    storage_type = "Cloud (Supabase)" if sm.IS_SUPABASE_ACTIVE else "Local Disk"
     st.markdown(f"""
-    <div class="sb-profile-container">
-        <div style="display: flex; align-items: center; gap: 12px;">
-            <div class="sb-profile-avatar">{initials}</div>
-            <div style="flex: 1; min-width: 0;">
-                <div class="sb-profile-name">{username}</div>
-                <div class="sb-profile-role">{role_label}</div>
-            </div>
-        </div>
+    <div class="profile-card">
+      <div class="profile-avatar">🧑</div>
+      <div class="profile-info">
+        <div class="profile-email" title="{st.session_state.logged_in_user}">{st.session_state.logged_in_user}</div>
+        <div class="profile-status">Online • {storage_type}</div>
+      </div>
     </div>
     """, unsafe_allow_html=True)
 
+    # Active DB Stats
+    st.markdown(f"""
+    <div class="sb-stats" style="margin: 8px 14px 14px;">
+      <div class="sb-stat" style="flex:1;background:rgba(255,255,255,0.01);border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center;"><div class="sb-stat-n" style="font-size:18px;font-weight:700;color:var(--text);">{stats["documents"]}</div><div class="sb-stat-l" style="font-size:9px;text-transform:uppercase;color:var(--text3);margin-top:2px;">Docs</div></div>
+      <div class="sb-stat" style="flex:1;background:rgba(255,255,255,0.01);border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center;"><div class="sb-stat-n" style="font-size:18px;font-weight:700;color:var(--text);">{stats["chunks"]}</div><div class="sb-stat-l" style="font-size:9px;text-transform:uppercase;color:var(--text3);margin-top:2px;">Chunks</div></div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<span class="sb-sec" style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:0.1em;text-transform:uppercase;padding:12px 14px 6px;display:block;">Workspace Navigation</span>', unsafe_allow_html=True)
+
+    # Sidebar Navigation items list
     nav_items = [
-        ("dashboard",        "🏠 Dashboard"),
-        ("chat",             "💬 Chat Assistant"),
-        ("upload",           "📤 Upload Content"),
+        ("chat",             "💬 Chat"),
+        ("upload",           "📤 Upload"),
         ("learning_path",    "🗺️ Learning Path"),
         ("qbank",            "📋 Q-Bank"),
         ("knowledge_graph",  "🕸️ Knowledge Graph"),
-        ("progress",         "📊 Progress Tracker"),
+        ("progress",         "📊 Progress"),
         ("settings",         "⚙️ Settings"),
     ]
-    
-    st.markdown('<span class="sb-sec">NAVIGATION</span>', unsafe_allow_html=True)
     for view_key, view_label in nav_items:
         is_active = st.session_state.view == view_key
-        if st.button(view_label, use_container_width=True,
-                     type="primary" if is_active else "secondary",
-                     key=f"nav_sidebar_{view_key}"):
+        if st.button(view_label, key=f"nav_btn_{view_key}", use_container_width=True,
+                     type="primary" if is_active else "secondary"):
             st.session_state.view = view_key
             st.rerun()
 
-    stats = get_stats()
-    
-    # ── Subject / Chapter filters inside collapsible Expander ────────────────
+    st.markdown('<div style="height:10px;"></div>', unsafe_allow_html=True)
+
+    # Collapsible filters expander
     if stats["subjects"]:
-        with st.sidebar.expander("🔍 Filter Content", expanded=False):
+        with st.expander("🔍 Filter Content", expanded=False):
             subject_opts = ["All Subjects"] + stats["subjects"]
-            sel_subj = st.selectbox("Subject", subject_opts, label_visibility="collapsed",
-                                    key="sb_subject_select")
+            sel_subj = st.selectbox("Subject", subject_opts, key="sb_subject_select")
             st.session_state.subject_filter = None if sel_subj == "All Subjects" else sel_subj
 
             if st.session_state.subject_filter:
                 chapters = stats["chapters_by_subject"].get(st.session_state.subject_filter, [])
                 if chapters:
                     chap_opts = ["All Chapters"] + chapters
-                    sel_chap = st.selectbox("Chapter", chap_opts, label_visibility="collapsed",
-                                            key="sb_chapter_select")
+                    sel_chap = st.selectbox("Chapter", chap_opts, key="sb_chapter_select")
                     st.session_state.chapter_filter = None if sel_chap == "All Chapters" else sel_chap
 
-    # ── Indexed files inside collapsible Expander ───────────────────────────
-    with st.sidebar.expander("📚 Indexed Files", expanded=False):
+    # Collapsible documents expander
+    with st.expander("📁 Indexed Documents", expanded=False):
         if stats["sources"]:
-            st.markdown('<div class="sb-files">', unsafe_allow_html=True)
             for s in stats["sources"]:
                 ico, cls = file_icon(s)
-                display  = s if len(s) <= 26 else s[:23] + "…"
+                display  = s if len(s) <= 24 else s[:21] + "…"
                 st.markdown(f"""
-                <div class="sb-file-row">
-                  <span class="sb-file-icon {cls}">{ico}</span>
-                  <span class="sb-file-name">{display}</span>
+                <div class="sb-file-row" style="display:flex;align-items:center;gap:8px;padding:6px;border-radius:6px;margin-bottom:2px;font-size:11px;">
+                  <span class="sb-file-icon {cls}" style="flex-shrink:0;">{ico}</span>
+                  <span class="sb-file-name" title="{s}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">{display}</span>
                 </div>""", unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
         else:
-            st.markdown('<p style="font-size:12px;font-style:italic;padding:8px 4px;color:#6b7280!important;">No files yet</p>', unsafe_allow_html=True)
+            st.markdown('<p style="font-size:11px;font-style:italic;color:var(--text3)!important;padding:4px 8px;">No files yet</p>', unsafe_allow_html=True)
 
-    # ── Account Info & Logout danger block ──────────────────────────────────
-    st.markdown('<span class="sb-sec">SYSTEM CONTROLS</span>', unsafe_allow_html=True)
-    st.markdown('<div class="sb-danger-btn">', unsafe_allow_html=True)
-    if st.button("🚪 Log Out", use_container_width=True, key="sidebar_logout_btn"):
+        st.markdown('<div style="height:10px;"></div>', unsafe_allow_html=True)
+        if st.button("🗑 Clear Database", key="clear_kb_btn", use_container_width=True):
+            import vector_store as vs
+            vs.clear_vector_store()
+            if st.session_state.logged_in_user:
+                sm.clear_vector_store_files(st.session_state.logged_in_user)
+            st.session_state.history = []; st.session_state.indexed = False
+            st.session_state.kg_data = None; st.session_state.lp_result = None
+            st.session_state.qb_result = None
+            st.rerun()
+
+    # Log Out locked at bottom
+    st.markdown('<div style="height: 30px;"></div>', unsafe_allow_html=True)
+    if st.button("🚪 Log Out", key="logout_btn", use_container_width=True):
         logout_user()
         st.rerun()
 
-    if st.button("🗑  Clear Knowledge Base", use_container_width=True, key="sidebar_clear_kb_btn"):
-        import vector_store as vs
-        vs.clear_vector_store()
-        if st.session_state.logged_in_user:
-            sm.clear_vector_store_files(st.session_state.logged_in_user)
-        st.session_state.history = []; st.session_state.indexed = False
-        st.session_state.kg_data = None; st.session_state.lp_result = None
-        st.session_state.qb_result = None
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-
     st.markdown("""
-    <p style="font-size:11px;color:#6b7280!important;margin-top:10px;line-height:1.7;padding:0 20px;">
-    Supports <strong>PDF · DOCX · PPTX · TXT</strong><br>
-    Powered by Gemini 2.5 + FAISS
-    </p>""", unsafe_allow_html=True)
+    <div style="font-size:9px;text-align:center;color:var(--text3)!important;margin-top:10px;line-height:1.4;padding:0 8px;">
+      Supports PDF · DOCX · PPTX · TXT<br>
+      Powered by Gemini 2.5 + FAISS
+    </div>
+    """, unsafe_allow_html=True)
 
-# Main Area Top Header Banner
-active_tab_label = dict(nav_items).get(st.session_state.view, "Dashboard")
-st.markdown(f"""
-<div class="dash-header">
-   <div>
-       <span class="dash-header-tag">Scholar AI Portal</span>
-       <h1 class="dash-header-title">{active_tab_label}</h1>
-   </div>
-   <div style="display: flex; gap: 10px; align-items: center;">
-       <span class="status-pill {"status-on" if st.session_state.indexed else "status-off"}">
-           <span class="status-dot"></span> {"Indexed" if st.session_state.indexed else "Ready"}
-       </span>
-   </div>
-</div>
-""", unsafe_allow_html=True)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  VIEW: DASHBOARD
-# ══════════════════════════════════════════════════════════════════════════════
-if st.session_state.view == "dashboard":
-    st.markdown('<div style="padding:0 32px 32px 32px;">', unsafe_allow_html=True)
-    
-    # Welcome Banner Details
-    user_email = st.session_state.logged_in_user or "user@example.com"
-    username = user_email.split('@')[0].upper()
-    role_label = "Admin" if "admin" in user_email.lower() else "Student"
-    
-    if role_label == "Admin":
-        st.markdown(f"""
-        <div class="welcome-banner">
-            <div>
-                <p class="welcome-banner-tag">System Administration Mode</p>
-                <h2 class="welcome-banner-name">Welcome back, {username}</h2>
-                <p class="welcome-banner-desc">You are running Scholar AI in Admin Mode. Check environment and operational statistics below.</p>
-            </div>
-            <div style="font-size: 44px; margin-right: 12px;">🛡️</div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Stats Cards
-        admin_stats = sm.get_registered_users_count()
-        api_key_status = "Active" if os.environ.get("GOOGLE_API_KEY") else "Missing"
-        db_mode = "Supabase" if sm.IS_SUPABASE_ACTIVE else "Local JSON"
-        
-        st.markdown(f"""
-        <div class="dashboard-stats-grid">
-            <div class="dashboard-stat-card">
-                <div class="dashboard-stat-icon-wrapper" style="background: rgba(99, 102, 241, 0.15); color: #6366f1;">👥</div>
-                <div>
-                    <div class="dashboard-stat-label">Total Users</div>
-                    <div class="dashboard-stat-value">{admin_stats}</div>
-                </div>
-            </div>
-            <div class="dashboard-stat-card">
-                <div class="dashboard-stat-icon-wrapper" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">⚡</div>
-                <div>
-                    <div class="dashboard-stat-label">API Status</div>
-                    <div class="dashboard-stat-value">{api_key_status}</div>
-                </div>
-            </div>
-            <div class="dashboard-stat-card">
-                <div class="dashboard-stat-icon-wrapper" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b;">🗄️</div>
-                <div>
-                    <div class="dashboard-stat-label">Database Mode</div>
-                    <div class="dashboard-stat-value">{db_mode}</div>
-                </div>
-            </div>
-            <div class="dashboard-stat-card">
-                <div class="dashboard-stat-icon-wrapper" style="background: rgba(239, 68, 68, 0.15); color: #ef4444;">📚</div>
-                <div>
-                    <div class="dashboard-stat-label">Total Docs</div>
-                    <div class="dashboard-stat-value">{stats["documents"]}</div>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        col_left, col_right = st.columns([1.6, 1.4], gap="large")
-        with col_left:
-            sources_html = ""
-            if stats["sources"]:
-                for s in stats["sources"]:
-                    ico, cls = file_icon(s)
-                    sources_html += f"""
-                    <div class="sb-file-row" style="padding: 10px; background: rgba(31, 41, 55, 0.35); border-radius: 8px; margin-bottom: 6px; border: 1px solid #1f2937;">
-                      <span style="font-size: 18px; margin-right: 8px;">{ico}</span>
-                      <span style="font-size: 13px; color: #eceef5;">{s}</span>
-                    </div>"""
-            else:
-                sources_html = '<p style="font-size:13px; font-style:italic; color:#6b7280; padding:16px 0;">No operational files indexed in system database.</p>'
-
-            st.markdown(f"""
-            <div class="dashboard-section-card">
-                <h3 class="dashboard-section-title">📂 Operations Log</h3>
-                <p style="font-size: 13.5px; color: #9ca3af; line-height: 1.6; margin-bottom: 15px;">Below is the list of active user files currently indexed and stored in the database.</p>
-                <div style="flex-grow: 1; overflow-y: auto; max-height: 250px;">
-                    {sources_html}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-        with col_right:
-            st.markdown("""
-            <div class="dashboard-section-card">
-                <h3 class="dashboard-section-title">⚙️ Quick Admin Actions</h3>
-                <p style="font-size: 13.5px; color: #9ca3af; line-height: 1.6; margin-bottom: 20px;">Use the actions below to adjust keys or configure servers.</p>
-            </div>
-            """, unsafe_allow_html=True)
-            if st.button("Manage System Keys (Settings) ⚙️", use_container_width=True, type="secondary", key="admin_go_settings"):
-                st.session_state.view = "settings"
-                st.rerun()
-            st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
-            if st.button("Clear Vector Stores (Danger) 🗑", use_container_width=True, type="secondary", key="admin_clear_db"):
-                import vector_store as vs
-                vs.clear_vector_store()
-                if st.session_state.logged_in_user:
-                    sm.clear_vector_store_files(st.session_state.logged_in_user)
-                st.session_state.history = []; st.session_state.indexed = False
-                st.session_state.kg_data = None; st.session_state.lp_result = None
-                st.session_state.qb_result = None
-                st.rerun()
-    else:
-        # Student Dashboard
-        st.markdown(f"""
-        <div class="welcome-banner">
-            <div>
-                <p class="welcome-banner-tag">Student Dashboard</p>
-                <h2 class="welcome-banner-name">Welcome back, {username}</h2>
-                <p class="welcome-banner-desc">Ready to study? Choose a subject guide, upload notes, or ask quick questions below.</p>
-            </div>
-            <div style="font-size: 44px; margin-right: 12px;">🎓</div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Stats Cards
-        streak_len = len(st.session_state.progress_data.get("streak_days", [])) or 1
-        avg_score = 0
-        quiz_res = st.session_state.progress_data.get("quiz_results", [])
-        if quiz_res:
-            avg_score = int(sum([q.get("score_pct", 0) for q in quiz_res]) / len(quiz_res))
-            
-        st.markdown(f"""
-        <div class="dashboard-stats-grid">
-            <div class="dashboard-stat-card">
-                <div class="dashboard-stat-icon-wrapper" style="background: rgba(99, 102, 241, 0.15); color: #6366f1;">📄</div>
-                <div>
-                    <div class="dashboard-stat-label">Study Materials</div>
-                    <div class="dashboard-stat-value">{stats["documents"]} docs</div>
-                </div>
-            </div>
-            <div class="dashboard-stat-card">
-                <div class="dashboard-stat-icon-wrapper" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">🧩</div>
-                <div>
-                    <div class="dashboard-stat-label">Indexed Chunks</div>
-                    <div class="dashboard-stat-value">{stats["chunks"]}</div>
-                </div>
-            </div>
-            <div class="dashboard-stat-card">
-                <div class="dashboard-stat-icon-wrapper" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b;">🔥</div>
-                <div>
-                    <div class="dashboard-stat-label">Study Streak</div>
-                    <div class="dashboard-stat-value">{streak_len} days</div>
-                </div>
-            </div>
-            <div class="dashboard-stat-card">
-                <div class="dashboard-stat-icon-wrapper" style="background: rgba(167, 139, 250, 0.15); color: #a78bfa;">🎯</div>
-                <div>
-                    <div class="dashboard-stat-label">Avg Quiz Score</div>
-                    <div class="dashboard-stat-value">{avg_score}%</div>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Bottom splitscreen
-        col_left, col_right = st.columns([1.6, 1.4], gap="large")
-        with col_left:
-            sources_html = ""
-            if stats["sources"]:
-                for s in stats["sources"]:
-                    ico, cls = file_icon(s)
-                    display = s if len(s) <= 40 else s[:37] + "…"
-                    sources_html += f"""
-                    <div class="sb-file-row" style="padding: 12px; background: rgba(31, 41, 55, 0.35); border-radius: 10px; margin-bottom: 8px; border: 1px solid #1f2937;">
-                      <span style="font-size: 18px; margin-right: 10px;">{ico}</span>
-                      <span style="font-size: 13px; color: #eceef5; font-weight: 500;">{display}</span>
-                    </div>"""
-            else:
-                sources_html = """
-                <div style="text-align: center; padding: 40px 0;">
-                    <div style="font-size: 32px; margin-bottom: 10px;">📤</div>
-                    <p style="font-size: 13px; color: #6b7280; margin-bottom: 15px;">No study materials uploaded yet.</p>
-                </div>"""
-
-            st.markdown(f"""
-            <div class="dashboard-section-card" style="height: 380px;">
-                <h3 class="dashboard-section-title">📚 Study Guide & Index</h3>
-                <p style="font-size: 13.5px; color: #9ca3af; line-height: 1.6; margin-bottom: 15px;">Your uploaded textbooks, syllabus sheets, and dynamic lecture notes.</p>
-                <div style="flex-grow: 1; overflow-y: auto; max-height: 220px; padding-right: 4px;">
-                    {sources_html}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            if not stats["sources"]:
-                st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
-                if st.button("Upload Notes to Start 📤", use_container_width=True, type="secondary", key="dash_go_upload"):
-                    st.session_state.view = "upload"
-                    st.rerun()
-                    
-        with col_right:
-            if "dash_chat_history" not in st.session_state:
-                st.session_state.dash_chat_history = [
-                    {"role": "ai", "content": "Hi! Ask me any quick question about your uploaded documents."}
-                ]
-                
-            history_html = ""
-            for msg in st.session_state.dash_chat_history[-2:]:  # show last 2 messages for height spacing
-                bubble_class = "quick-chat-bubble-user" if msg["role"] == "user" else "quick-chat-bubble-ai"
-                history_html += f"""
-                <div class="quick-chat-bubble {bubble_class}">
-                    {msg["content"]}
-                </div>"""
-
-            st.markdown(f"""
-            <div class="dashboard-section-card" style="height: 380px;">
-                <h3 class="dashboard-section-title">💬 Ask Scholar AI</h3>
-                <p style="font-size: 13.5px; color: #9ca3af; line-height: 1.6; margin-bottom: 15px;">Quick RAG search on your uploaded syllabus and materials.</p>
-                <div class="quick-chat-container">
-                    <div class="quick-chat-history">
-                        {history_html}
-                    </div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
-            q_input = st.text_input("Quick Query", placeholder="Ask anything about syllabus...", label_visibility="collapsed", key="dash_quick_query_input")
-            
-            st.markdown("<div style='height: 5px;'></div>", unsafe_allow_html=True)
-            if st.button("Ask Assistant ⚡", use_container_width=True, type="primary", key="dash_quick_query_btn"):
-                if q_input:
-                    st.session_state.dash_chat_history.append({"role": "user", "content": q_input})
-                    
-                    if not st.session_state.indexed:
-                        answer = "Please upload and process some documents in the **Upload** section first!"
-                    else:
-                        api_key, model_name = get_api_key_and_model("explain")
-                        try:
-                            answer, _ = answer_topic(
-                                q_input, 
-                                st.session_state.mode, 
-                                st.session_state.level, 
-                                api_key=api_key, 
-                                model_name=model_name,
-                                subject_filter=st.session_state.subject_filter,
-                                chapter_filter=st.session_state.chapter_filter
-                            )
-                        except Exception as e:
-                            answer = f"Error generating answer: {e}"
-                            
-                    st.session_state.dash_chat_history.append({"role": "ai", "content": answer})
-                    st.rerun()
-                    
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  VIEW: UPLOAD
-# ══════════════════════════════════════════════════════════════════════════════
 if st.session_state.view == "upload":
     st.markdown('<div style="padding:32px 44px;">', unsafe_allow_html=True)
     col_up, col_how = st.columns([3, 2], gap="large")
@@ -1628,7 +861,7 @@ if st.session_state.view == "upload":
           <div class="how-card">
             <div class="how-card-title">How it works</div>
             <div class="how-step"><div class="how-num">1</div><div class="how-text"><strong>Upload</strong> your PDFs, notes, slides, or textbooks.</div></div>
-            <div class="how-step"><div class="how-num">2</div><div class="how-text"><strong>Process</strong> — Scholar AI chunks, embeds, and indexes your content.</div></div>
+            <div class="how-step"><div class="how-num">2</div><div class="how-text"><strong>Process</strong> — Vidya AI chunks, embeds, and indexes your content.</div></div>
             <div class="how-step"><div class="how-num">3</div><div class="how-text"><strong>Ask</strong> anything in Chat, generate a Learning Path, or build a Q-Bank.</div></div>
           </div>
           <div class="how-card" style="margin-top:14px;">
@@ -1696,7 +929,7 @@ elif st.session_state.view == "chat":
             st.markdown(f"""
             <div class="welcome-card">
               <div class="welcome-glyph">🎓</div>
-              <h2 class="welcome-h">Ask <em>Scholar AI</em> anything</h2>
+              <h2 class="welcome-h">Ask <em>Vidya AI</em> anything</h2>
               <p class="welcome-p">{mode_info[st.session_state.mode]}<br>Upload your materials first, then ask away.</p>
               <div class="welcome-chips">
                 <span class="welcome-chip">📖 Topic explanations</span>
@@ -1714,7 +947,7 @@ elif st.session_state.view == "chat":
                 lbl += f" · {lm['icon']} {lm['label']}"
 
             st.markdown(f'<div class="msg-row msg-row-user"><div class="bubble bubble-user">{item["q"]}</div><div class="avatar avatar-user">🧑</div></div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="ai-label" style="margin-left:44px;">Scholar AI · {lbl}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="ai-label" style="margin-left:44px;">Vidya AI · {lbl}</div>', unsafe_allow_html=True)
 
             with st.container():
                 col_av, col_ans = st.columns([0.05, 0.95])
@@ -1729,61 +962,6 @@ elif st.session_state.view == "chat":
                         st.markdown(f'<div class="src-bar">{chips}</div>', unsafe_allow_html=True)
                     st.markdown("</div>", unsafe_allow_html=True)
 
-    # ── Input bar ──────────────────────────────────────────────────────────
-    st.markdown('<hr style="margin:8px 0 12px !important;">', unsafe_allow_html=True)
-    placeholders = {
-        "explain":    "Ask about a topic (e.g. 'Explain binary search trees')…",
-        "exam":       "Paste your exam question here (e.g. '8 marks — Explain normalisation')…",
-        "synthesize": "Enter a topic to synthesise across all your documents…",
-        "exam_map":   "Enter a topic to map to exam patterns and high-yield content…",
-    }
-
-    inp_c, btn_c = st.columns([5, 1], gap="small")
-    with inp_c:
-        query = st.text_area("query", placeholder=placeholders[st.session_state.mode],
-                             label_visibility="collapsed", key="chat_input", height=100)
-    with btn_c:
-        ask_btn = st.button("Send →", use_container_width=True, type="primary")
-
-    mode_desc_map = {
-        "explain":    f"Explain Topic — {st.session_state.level} level",
-        "exam":       "Solve Exam Question — full mark-scheme answer",
-        "synthesize": f"Cross-Document Synthesis — {st.session_state.level} level",
-        "exam_map":   "Exam Pattern Mapping — high-yield analysis",
-    }
-    st.markdown(f'<p style="font-size:11px;color:var(--text3)!important;margin-top:4px;">Mode: <strong style="color:var(--text2)!important;">{mode_desc_map[st.session_state.mode]}</strong></p>', unsafe_allow_html=True)
-
-    if ask_btn and query:
-        if not st.session_state.indexed:
-            st.warning("⚠️ Please go to Upload tab and index your documents first.")
-        else:
-            subj  = st.session_state.subject_filter
-            level = st.session_state.level
-            with st.spinner("Scholar AI is thinking…"):
-                mode_key, mode_model = get_api_key_and_model(st.session_state.mode)
-                if st.session_state.mode == "explain":
-                    answer, sources = answer_topic(query, level=level, subject=subj, model_name=mode_model, api_key=mode_key)
-                elif st.session_state.mode == "exam":
-                    answer, sources = solve_question(query, subject=subj, model_name=mode_model, api_key=mode_key)
-                elif st.session_state.mode == "synthesize":
-                    answer, sources = synthesize_topic(query, model_name=mode_model, api_key=mode_key)
-                else:  # exam_map
-                    answer, sources = map_topic_to_exam(query, subject=subj, model_name=mode_model, api_key=mode_key)
-
-            st.session_state.history.append({
-                "q": query, "a": answer, "sources": sources,
-                "mode": st.session_state.mode, "level": level,
-            })
-            if st.session_state.logged_in_user:
-                sm.save_chat_history(st.session_state.logged_in_user, st.session_state.history)
-            # Week 5: track this study session
-            record_session(
-                topic=query[:80],
-                mode=st.session_state.mode,
-                level=level,
-                subject=subj,
-            )
-            st.rerun()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2186,3 +1364,85 @@ elif st.session_state.view == "settings":
             st.rerun()
             
     st.markdown('</div>', unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  GLOBAL PERSISTENT CHAT ASSISTANT (At bottom of all views)
+# ══════════════════════════════════════════════════════════════════════════════
+st.markdown('<div style="height: 40px;"></div>', unsafe_allow_html=True)
+
+placeholders = {
+    "explain":    "Ask about a topic (e.g. 'Explain binary search trees')…",
+    "exam":       "Paste your exam question (e.g. 'Solve: Describe normalization steps')…",
+    "synthesize": "Enter a topic to synthesise across all your documents…",
+    "exam_map":   "Enter a topic to map to exam patterns and high-yield content…",
+}
+active_mode = st.session_state.mode
+placeholder_txt = placeholders.get(active_mode, "Ask Vidya AI something…")
+
+st.markdown("""
+<div style="margin: 0 10px -15px 10px;">
+  <div style="font-size:12px; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:0.08em; display:flex; align-items:center; gap:6px;">
+    <span>⚡ Global Assistant</span>
+    <span style="background:var(--accent-lt); border-radius:4px; padding:2px 6px; font-size:9px; color:var(--accent);">Active</span>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+with st.container(border=True):
+    mode_desc_map = {
+        "explain":    f"Explain Topic — {st.session_state.level.title()} Level",
+        "exam":       "Solve Exam Question",
+        "synthesize": f"Cross-Document Synthesis — {st.session_state.level.title()} Level",
+        "exam_map":   "Exam Pattern Mapping",
+    }
+    
+    # Text Input for the global search bar
+    global_query = st.text_input(
+        "global_chat_bar", 
+        placeholder=placeholder_txt, 
+        label_visibility="collapsed", 
+        key="global_chat_input"
+    )
+    
+    c_btn1, c_btn2 = st.columns([4, 1.5], gap="small")
+    with c_btn1:
+        st.markdown(f'<p style="font-size:11px;color:var(--text3)!important;margin: 8px 0 0 4px;">Active Assistant Mode: <strong style="color:var(--accent)!important;">{mode_desc_map.get(active_mode, "Explain")}</strong></p>', unsafe_allow_html=True)
+    with c_btn2:
+        global_ask_btn = st.button("Ask Assistant →", use_container_width=True, type="primary", key="global_send_btn")
+
+if (global_ask_btn or (global_query and global_query != "")) and global_query:
+    if not st.session_state.indexed:
+        st.warning("⚠️ Please upload and index your documents first in the Upload view.")
+    else:
+        subj  = st.session_state.subject_filter
+        level = st.session_state.level
+        with st.spinner("Vidya AI is thinking…"):
+            mode_key, mode_model = get_api_key_and_model(st.session_state.mode)
+            if st.session_state.mode == "explain":
+                answer, sources = answer_topic(global_query, level=level, subject=subj, model_name=mode_model, api_key=mode_key)
+            elif st.session_state.mode == "exam":
+                answer, sources = solve_question(global_query, subject=subj, model_name=mode_model, api_key=mode_key)
+            elif st.session_state.mode == "synthesize":
+                answer, sources = synthesize_topic(global_query, model_name=mode_model, api_key=mode_key)
+            else:  # exam_map
+                answer, sources = map_topic_to_exam(global_query, subject=subj, model_name=mode_model, api_key=mode_key)
+
+        st.session_state.history.append({
+            "q": global_query, "a": answer, "sources": sources,
+            "mode": st.session_state.mode, "level": level,
+        })
+        if st.session_state.logged_in_user:
+            sm.save_chat_history(st.session_state.logged_in_user, st.session_state.history)
+        
+        record_session(
+            topic=global_query[:80],
+            mode=st.session_state.mode,
+            level=level,
+            subject=subj,
+        )
+        
+        # Reset input and view
+        st.session_state.view = "chat"
+        st.session_state.global_chat_input = ""
+        st.rerun()

@@ -125,8 +125,8 @@ def call_llm(
             headers = {
                 "Authorization": f"Bearer {key}",
                 "Content-Type": "application/json",
-                "HTTP-Referer": "https://scholar.ai", # Optional OpenRouter branding
-                "X-Title": "Scholar AI"
+                "HTTP-Referer": "https://vidya.ai", # Optional OpenRouter branding
+                "X-Title": "Vidya AI"
             }
             payload = {
                 "model": or_model,

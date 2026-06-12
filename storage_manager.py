@@ -6,10 +6,11 @@ import random
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from pathlib import Path
-from dotenv import load_dotenv
 import streamlit as st
+from dotenv import load_dotenv
 
-load_dotenv(override=True)
+# Load environment variables from .env
+load_dotenv()
 
 # Check if Supabase credentials are provided
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
@@ -27,17 +28,32 @@ if not SUPABASE_URL or not SUPABASE_KEY:
         # Fallback if secrets.toml is missing or unconfigured
         pass
 
-IS_SUPABASE_ACTIVE = bool(SUPABASE_URL and SUPABASE_KEY)
-
+IS_SUPABASE_CONFIGURED = bool(SUPABASE_URL and SUPABASE_KEY)
 
 supabase_client = None
-if IS_SUPABASE_ACTIVE:
+if IS_SUPABASE_CONFIGURED:
     try:
         from supabase import create_client
         supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
     except Exception as e:
         print(f"Error initializing Supabase client: {e}")
-        IS_SUPABASE_ACTIVE = False
+        IS_SUPABASE_CONFIGURED = False
+
+def is_supabase_active() -> bool:
+    if not supabase_client:
+        return False
+    try:
+        if "use_supabase" in st.session_state:
+            return bool(st.session_state["use_supabase"])
+    except Exception:
+        pass
+    # Default to True for cloud deployment if credentials exist and no choice is set
+    return True
+
+def __getattr__(name: str):
+    if name == "IS_SUPABASE_ACTIVE":
+        return is_supabase_active()
+    raise AttributeError(f"module {__name__} has no attribute {name}")
 
 # Local database file path
 LOCAL_USERS_FILE = os.path.join("data", "users.json")
@@ -66,12 +82,22 @@ def get_local_user_dir(email: str) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 #  EMAIL HELPERS (For Local Mode SMTP verification)
 # ══════════════════════════════════════════════════════════════════════════════
+def get_smtp_var(key: str, default: str = "") -> str:
+    val = os.environ.get(key, "")
+    if not val:
+        try:
+            if hasattr(st, "secrets") and st.secrets and key in st.secrets:
+                val = str(st.secrets[key])
+        except Exception:
+            pass
+    return val or default
+
 def send_local_verification_email(email_to: str, code: str) -> bool:
-    smtp_server = os.environ.get("SMTP_SERVER")
-    smtp_port = os.environ.get("SMTP_PORT")
-    smtp_user = os.environ.get("SMTP_USER")
-    smtp_password = os.environ.get("SMTP_PASSWORD")
-    smtp_from = os.environ.get("SMTP_FROM", smtp_user)
+    smtp_server = get_smtp_var("SMTP_SERVER")
+    smtp_port = get_smtp_var("SMTP_PORT")
+    smtp_user = get_smtp_var("SMTP_USER")
+    smtp_password = get_smtp_var("SMTP_PASSWORD")
+    smtp_from = get_smtp_var("SMTP_FROM", smtp_user)
     
     if not all([smtp_server, smtp_port, smtp_user, smtp_password]):
         print(f"SMTP not configured. Verification code for {email_to}: {code}")
@@ -83,9 +109,9 @@ def send_local_verification_email(email_to: str, code: str) -> bool:
         msg = MIMEMultipart()
         msg['From'] = smtp_from
         msg['To'] = email_to
-        msg['Subject'] = "Scholar AI - Email Verification Code"
+        msg['Subject'] = "Vidya AI - Email Verification Code"
         
-        body = f"""Welcome to Scholar AI!
+        body = f"""Welcome to Vidya AI!
         
 Your email verification code is: {code}
         
@@ -628,23 +654,3 @@ def clear_vector_store_files(user_id: str):
                     os.remove(path)
                 except Exception as e:
                     print(f"Error removing {path}: {e}")
-
-def get_registered_users_count() -> int:
-    if IS_SUPABASE_ACTIVE:
-        try:
-            res = supabase_client.table("users").select("id", count="exact").execute()
-            if res.count is not None:
-                return res.count
-        except Exception:
-            pass
-        return 1
-    else:
-        if os.path.exists(LOCAL_USERS_FILE):
-            try:
-                with open(LOCAL_USERS_FILE, "r") as f:
-                    users = json.load(f)
-                    return len(users)
-            except Exception:
-                pass
-        return 0
-
