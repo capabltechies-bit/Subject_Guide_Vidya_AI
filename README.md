@@ -3,6 +3,7 @@
 > **Capabl.in · AI Agent Development Project — Milestone Phase**
 >
 > An advanced, multi-document academic assistant that generates customized study paths, dynamic question banks, interactive knowledge graphs, and RAG-based explanations. Powered by a robust backend supporting offline-first storage and automatic multi-provider key failover.
+**🌐 Live App:** [https://scholar-ai-subject-guide-capabl-techies.streamlit.app/](https://scholar-ai-subject-guide-capabl-techies.streamlit.app/)
 
 ---
 
