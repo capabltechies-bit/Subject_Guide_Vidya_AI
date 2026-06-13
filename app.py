@@ -384,7 +384,8 @@ html, body, .stApp {
   font-family: 'Sora', 'Outfit', sans-serif; 
   color: var(--text); 
 }
-#MainMenu, footer, header, [data-testid="stToolbar"] { visibility:hidden; height:0; }
+#MainMenu, footer, [data-testid="stToolbar"] { visibility:hidden; height:0; }
+header { background: transparent !important; }
 .block-container { padding: 20px 40px 100px !important; max-width:100% !important; }
 
 /* ── Premium Custom Scrollbar ── */
