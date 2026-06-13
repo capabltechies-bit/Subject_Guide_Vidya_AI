@@ -36,15 +36,9 @@ def call_llm(
                 )
                 return model.generate_content(user_message).text
             except Exception as e:
-                err_msg = str(e).lower()
-                # Check for rate limit or quota errors
-                if any(word in err_msg for word in ["quota", "exhausted", "429", "rate_limit", "resource_exhausted", "limit"]):
-                    last_gemini_err = e
-                    print(f"Gemini API Key starting with '{key[:8]}' exhausted. Trying next key...")
-                    continue
-                else:
-                    # Reraise other errors immediately (e.g. invalid query syntax)
-                    raise e
+                last_gemini_err = e
+                print(f"Gemini API generation failed with key '{key[:8]}...': {e}. Trying next key or fallback...")
+                continue
     else:
         print("No Gemini API keys found.")
 
@@ -91,14 +85,13 @@ def call_llm(
                     last_groq_err = Exception(f"Groq error: {response.text}")
                     continue
                 else:
-                    raise Exception(f"Groq API Error {response.status_code}: {response.text}")
-            except Exception as e:
-                err_msg = str(e).lower()
-                if any(word in err_msg for word in ["timeout", "connection", "429", "rate"]):
-                    last_groq_err = e
+                    last_groq_err = Exception(f"Groq API Error {response.status_code}: {response.text}")
+                    print(f"Groq API Error {response.status_code}. Trying next key or fallback...")
                     continue
-                else:
-                    raise e
+            except Exception as e:
+                last_groq_err = e
+                print(f"Groq API request failed: {e}. Trying next key or fallback...")
+                continue
     else:
         print("No Groq API keys found.")
 
@@ -146,14 +139,13 @@ def call_llm(
                     last_or_err = Exception(f"OpenRouter error: {response.text}")
                     continue
                 else:
-                    raise Exception(f"OpenRouter API Error {response.status_code}: {response.text}")
-            except Exception as e:
-                err_msg = str(e).lower()
-                if any(word in err_msg for word in ["timeout", "connection", "429", "rate"]):
-                    last_or_err = e
+                    last_or_err = Exception(f"OpenRouter API Error {response.status_code}: {response.text}")
+                    print(f"OpenRouter API Error {response.status_code}. Trying next key or fallback...")
                     continue
-                else:
-                    raise e
+            except Exception as e:
+                last_or_err = e
+                print(f"OpenRouter API request failed: {e}. Trying next key or fallback...")
+                continue
     else:
         print("No OpenRouter API keys found.")
 
