@@ -536,14 +536,7 @@ section[data-testid="stSidebar"] > div:first-child {
   padding: 0 !important; 
   width: 100% !important;
 }
-/* Force sidebar always visible */
-section[data-testid="stSidebar"][aria-expanded="false"] {
-  display: block !important;
-  min-width: 280px !important;
-  width: 300px !important;
-  transform: none !important;
-  margin-left: 0 !important;
-}
+
 
 section[data-testid="stSidebar"] p, section[data-testid="stSidebar"] span,
 section[data-testid="stSidebar"] label, section[data-testid="stSidebar"] div { 
