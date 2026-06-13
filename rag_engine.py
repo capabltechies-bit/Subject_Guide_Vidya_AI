@@ -152,8 +152,14 @@ def solve_question(
 #  3. CONTENT SYNTHESIS  (cross-document)
 # ══════════════════════════════════════════════════════════════════════════════
 
-_SYNTHESIS_PROMPT = """\
+def _synthesis_system_prompt(level: str) -> str:
+    cfg = _LEVEL_CFG.get(level, _LEVEL_CFG["intermediate"])
+    return f"""\
 You are a senior academic researcher synthesising information from MULTIPLE study documents.
+Your audience is {cfg['audience']}.
+
+Writing style: {cfg['style']}
+Required depth: {cfg['depth']}
 
 Given a TOPIC and excerpts from several sources, your task is to:
 1. Identify where sources AGREE, COMPLEMENT, or CONTRADICT each other.
@@ -173,10 +179,11 @@ Use Markdown throughout. Go beyond simple retrieval — reason and synthesise.
 
 def synthesize_topic(
     query: str, k_per_doc: int = 2,
+    level: str = "intermediate", subject: str = None,
     model_name: str = None, api_key: str = None
 ) -> tuple[str, list[dict]]:
     """Synthesise a topic across all indexed documents."""
-    sources = search_cross_document(query, k_per_doc=k_per_doc, api_key=api_key)
+    sources = search_cross_document(query, k_per_doc=k_per_doc, subject=subject, api_key=api_key)
     if not sources:
         return (
             "⚠️ No relevant content found across your documents. "
@@ -188,7 +195,7 @@ def synthesize_topic(
         f"TOPIC TO SYNTHESISE:\n{query}\n\n"
         f"CONTEXT FROM MULTIPLE DOCUMENTS:\n{context}"
     )
-    return _call_gemini(_SYNTHESIS_PROMPT, user_msg, model_name, api_key), sources
+    return _call_gemini(_synthesis_system_prompt(level), user_msg, model_name, api_key), sources
 
 
 # ══════════════════════════════════════════════════════════════════════════════

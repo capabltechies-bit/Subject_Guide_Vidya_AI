@@ -1591,7 +1591,7 @@ if (global_ask_btn or (global_query and global_query != "")) and global_query:
             elif st.session_state.mode == "exam":
                 answer, sources = solve_question(global_query, subject=subj, model_name=mode_model, api_key=mode_key)
             elif st.session_state.mode == "synthesize":
-                answer, sources = synthesize_topic(global_query, model_name=mode_model, api_key=mode_key)
+                answer, sources = synthesize_topic(global_query, level=level, subject=subj, model_name=mode_model, api_key=mode_key)
             else:  # exam_map
                 answer, sources = map_topic_to_exam(global_query, subject=subj, model_name=mode_model, api_key=mode_key)
 

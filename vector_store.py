@@ -183,7 +183,7 @@ def search(query: str, k: int = 5,
 
 
 # ── Cross-document search (for synthesis) ────────────────────────────────────
-def search_cross_document(query: str, k_per_doc: int = 2, api_key: str = None) -> list:
+def search_cross_document(query: str, k_per_doc: int = 2, subject: str = None, api_key: str = None) -> list:
     """
     Retrieve top-k chunks from EACH indexed document independently.
     Used for cross-document synthesis to ensure all sources are represented.
@@ -199,18 +199,23 @@ def search_cross_document(query: str, k_per_doc: int = 2, api_key: str = None) -
     for dist, idx in zip(distances[0], indices[0]):
         if idx < 0:
             continue
-        src = metadata_store[idx]["source"]
+        meta = metadata_store[idx]
+        if subject and meta.get("subject") != subject:
+            continue
+        src = meta["source"]
         if len(per_doc[src]) < k_per_doc:
             per_doc[src].append({
                 "text":         chunks_store[idx],
                 "source":       src,
-                "content_type": metadata_store[idx]["content_type"],
-                "subject":      metadata_store[idx].get("subject", "General"),
-                "chapter":      metadata_store[idx].get("chapter", "General"),
+                "content_type": meta["content_type"],
+                "subject":      meta.get("subject", "General"),
+                "chapter":      meta.get("chapter", "General"),
                 "score":        float(dist),
             })
 
-    return [chunk for chunks in per_doc.values() for chunk in chunks]
+    results = [chunk for chunks in per_doc.values() for chunk in chunks]
+    results.sort(key=lambda x: x["score"])
+    return results[:12]
 
 
 # ── Sample chunks for KG building ────────────────────────────────────────────
