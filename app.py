@@ -385,7 +385,8 @@ html, body, .stApp {
   color: var(--text); 
 }
 #MainMenu, footer, [data-testid="stToolbar"] { visibility:hidden; height:0; }
-header { background: transparent !important; }
+header, [data-testid="stHeader"] { background: transparent !important; }
+[data-testid="collapsedControl"], [data-testid="stSidebarCollapsedControl"] { display: flex !important; visibility: visible !important; z-index: 99999 !important; color: var(--accent) !important; background: var(--surface2) !important; border-radius: 8px !important; }
 .block-container { padding: 20px 40px 100px !important; max-width:100% !important; }
 
 /* ── Premium Custom Scrollbar ── */
