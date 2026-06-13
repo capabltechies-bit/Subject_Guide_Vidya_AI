@@ -1,4 +1,4 @@
-# 🎓 Vidya AI (विद्या) — Smart Subject Guide & Q-Bank Assistant
+# 🎓 Scholar AI — Smart Subject Guide & Q-Bank Assistant
 
 > **Capabl.in · AI Agent Development Project — Milestone Phase**
 >
@@ -60,7 +60,7 @@ Open `.env` and fill in your keys (e.g. `GOOGLE_API_KEY`). You can specify multi
 ```bash
 streamlit run app.py
 ```
-Open `http://localhost:8501` to use **Vidya AI**.
+Open `http://localhost:8501` to use **Scholar AI**.
 
 ---
 
@@ -96,7 +96,7 @@ Subject_Guide_Vidya_AI/
 
 ## 🧬 System Architecture & Pipelines
 
-Vidya AI consists of three interconnected modular pipelines: **Ingestion & Indexing**, **Hybrid Storage Middleware**, and the **Dynamic LLM Failover & Rotation Chain**.
+Scholar AI consists of three interconnected modular pipelines: **Ingestion & Indexing**, **Hybrid Storage Middleware**, and the **Dynamic LLM Failover & Rotation Chain**.
 
 ### 1. Ingestion & Semantic Indexing Pipeline
 ```mermaid
