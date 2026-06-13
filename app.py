@@ -102,7 +102,7 @@ if st.session_state.last_view != st.session_state.view:
 def get_api_key_and_model(mode: str) -> tuple[str, str]:
     if st.session_state.api_settings and "modes" in st.session_state.api_settings:
         mode_cfg = st.session_state.api_settings["modes"].get(mode, {})
-        model = mode_cfg.get("model", "gemini-2.5-flash")
+        model = mode_cfg.get("model", "gemini-1.5-flash")
         key = mode_cfg.get("api_key", "")
         if not key:
             key = st.session_state.api_settings.get("default_api_key", "")
@@ -113,18 +113,18 @@ def get_api_key_and_model(mode: str) -> tuple[str, str]:
         return key, model
     
     default_models = {
-        "explain": "gemini-2.5-flash",
-        "exam": "gemini-2.5-pro",
-        "synthesize": "gemini-2.5-pro",
-        "exam_map": "gemini-2.5-flash",
-        "learning_path": "gemini-2.5-flash",
-        "qbank": "gemini-2.5-flash",
-        "knowledge_graph": "gemini-2.5-flash"
+        "explain": "gemini-1.5-flash",
+        "exam": "gemini-1.5-pro",
+        "synthesize": "gemini-1.5-pro",
+        "exam_map": "gemini-1.5-flash",
+        "learning_path": "gemini-1.5-flash",
+        "qbank": "gemini-1.5-flash",
+        "knowledge_graph": "gemini-1.5-flash"
     }
     key = os.environ.get("GOOGLE_API_KEY", "")
     if not key and hasattr(st, "secrets") and "GOOGLE_API_KEY" in st.secrets:
         key = str(st.secrets["GOOGLE_API_KEY"])
-    return key, default_models.get(mode, "gemini-2.5-flash")
+    return key, default_models.get(mode, "gemini-1.5-flash")
 
 def load_user_session_data(user_id: str):
     import vector_store as vs
@@ -1493,7 +1493,7 @@ elif st.session_state.view == "settings":
         
         st.markdown("<hr style='border-color: var(--border2); margin:20px 0 !important;'>", unsafe_allow_html=True)
         
-        model_options = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-flash", "gemini-1.5-pro"]
+        model_options = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.0-pro-exp"]
         
         modes_to_configure = [
             ("explain", "📖 Explain Mode"),
@@ -1586,14 +1586,18 @@ if (global_ask_btn or (global_query and global_query != "")) and global_query:
         level = st.session_state.level
         with st.spinner("Scholar AI is thinking…"):
             mode_key, mode_model = get_api_key_and_model(st.session_state.mode)
-            if st.session_state.mode == "explain":
-                answer, sources = answer_topic(global_query, level=level, subject=subj, model_name=mode_model, api_key=mode_key)
-            elif st.session_state.mode == "exam":
-                answer, sources = solve_question(global_query, subject=subj, model_name=mode_model, api_key=mode_key)
-            elif st.session_state.mode == "synthesize":
-                answer, sources = synthesize_topic(global_query, level=level, subject=subj, model_name=mode_model, api_key=mode_key)
-            else:  # exam_map
-                answer, sources = map_topic_to_exam(global_query, subject=subj, model_name=mode_model, api_key=mode_key)
+            try:
+                if st.session_state.mode == "explain":
+                    answer, sources = answer_topic(global_query, level=level, subject=subj, model_name=mode_model, api_key=mode_key)
+                elif st.session_state.mode == "exam":
+                    answer, sources = solve_question(global_query, subject=subj, model_name=mode_model, api_key=mode_key)
+                elif st.session_state.mode == "synthesize":
+                    answer, sources = synthesize_topic(global_query, level=level, subject=subj, model_name=mode_model, api_key=mode_key)
+                else:  # exam_map
+                    answer, sources = map_topic_to_exam(global_query, subject=subj, model_name=mode_model, api_key=mode_key)
+            except Exception as e:
+                st.error(f"Failed to generate response: {str(e)}")
+                st.stop()
 
         st.session_state.history.append({
             "q": global_query, "a": answer, "sources": sources,
