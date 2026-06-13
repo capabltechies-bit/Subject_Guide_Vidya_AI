@@ -384,7 +384,7 @@ html, body, .stApp {
   font-family: 'Sora', 'Outfit', sans-serif; 
   color: var(--text); 
 }
-#MainMenu, footer, [data-testid="stToolbar"] { visibility:hidden; height:0; }
+#MainMenu, footer { visibility:hidden; height:0; }
 header, [data-testid="stHeader"] { background: transparent !important; }
 [data-testid="collapsedControl"], [data-testid="stSidebarCollapsedControl"] { display: flex !important; visibility: visible !important; opacity: 1 !important; position: fixed !important; top: 15px !important; left: 15px !important; z-index: 999999 !important; color: var(--accent) !important; background: var(--surface2) !important; border: 1px solid var(--accent) !important; border-radius: 8px !important; padding: 5px !important; }
 .block-container { padding: 20px 40px 100px !important; max-width:100% !important; }
