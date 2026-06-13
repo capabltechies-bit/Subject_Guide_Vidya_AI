@@ -110,6 +110,8 @@ def get_api_key_and_model(mode: str) -> tuple[str, str]:
             key = os.environ.get("GOOGLE_API_KEY", "")
             if not key and hasattr(st, "secrets") and "GOOGLE_API_KEY" in st.secrets:
                 key = str(st.secrets["GOOGLE_API_KEY"])
+        if "gemini-2.5" in model:
+            model = model.replace("gemini-2.5", "gemini-1.5")
         return key, model
     
     default_models = {

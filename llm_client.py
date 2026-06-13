@@ -57,8 +57,8 @@ def call_llm(
     
     if groq_keys:
         print(f"Gemini failed or unconfigured. Attempting Groq fallback with {len(groq_keys)} keys...")
-        # LLaMA 3.1 70B is free and smart enough for academic tasks
-        groq_model = "llama-3.1-70b-versatile" 
+        # LLaMA 3.3 70B is free and smart enough for academic tasks
+        groq_model = "llama-3.3-70b-versatile" 
         url = "https://api.groq.com/openai/v1/chat/completions"
         
         for key in groq_keys:
@@ -110,8 +110,8 @@ def call_llm(
     
     if or_keys:
         print(f"Gemini and Groq failed. Attempting OpenRouter fallback with {len(or_keys)} keys...")
-        # Using llama-3-8b-instruct:free as it is stable and permanently free
-        or_model = "meta-llama/llama-3-8b-instruct:free"
+        # Using llama-3.1-8b-instruct:free as it is stable and permanently free
+        or_model = "meta-llama/llama-3.1-8b-instruct:free"
         url = "https://openrouter.ai/api/v1/chat/completions"
         
         for key in or_keys:
