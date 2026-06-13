@@ -20,14 +20,22 @@ _MODEL = "gemini-2.5-flash"
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
-def _build_context(chunks: list[dict]) -> str:
+def _build_context(chunks: list[dict], max_chars: int = 20000) -> str:
     parts = []
+    current_len = 0
     for i, c in enumerate(chunks, 1):
         chap = c.get("chapter", "")
         chap_tag = f" | {chap}" if chap and chap not in ("General", "") else ""
-        parts.append(
-            f"[Source {i}: {c['source']} ({c['content_type']}){chap_tag}]\n{c['text']}"
-        )
+        part = f"[Source {i}: {c['source']} ({c['content_type']}){chap_tag}]\n{c['text']}"
+        
+        if current_len + len(part) > max_chars:
+            if not parts:
+                parts.append(part[:max_chars] + "\n...[truncated]")
+            break
+            
+        parts.append(part)
+        current_len += len(part)
+        
     return "\n\n---\n\n".join(parts)
 
 
